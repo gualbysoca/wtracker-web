@@ -1,0 +1,93 @@
+# =====================================================
+# Docker Compose — Workforce Tracker
+# Stack: PostgreSQL+PostGIS | Node.js Backend | Nginx+React Frontend
+# =====================================================
+
+services:
+  # ── Base de Datos ─────────────────────────────────
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: wtracker_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME}
+      POSTGRES_USER:     ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./backend/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - wtracker_net
+
+  # ── API Backend ───────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: wtracker_api
+    restart: unless-stopped
+    environment:
+      NODE_ENV:                 production
+      PORT:                     3001
+      DB_HOST:                  db
+      DB_PORT:                  5432
+      DB_NAME:                  ${DB_NAME}
+      DB_USER:                  ${DB_USER}
+      DB_PASSWORD:              ${DB_PASSWORD}
+      JWT_SECRET:               ${JWT_SECRET}
+      JWT_EXPIRES_IN:           15m
+      JWT_REFRESH_SECRET:       ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_EXPIRES_IN:   7d
+      UPLOAD_DIR:               /app/uploads
+      MAX_FILE_SIZE_MB:         10
+      FRONTEND_URL:             http://localhost
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - wtracker_net
+
+  # ── Frontend (Nginx) ──────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+        VITE_DATE_LOCALE: ${DATE_LOCALE:-es-CL}
+        VITE_DATE_FORMAT: ${DATE_FORMAT:-short}
+        VITE_MAP_API_KEY: ${MAP_API_KEY:-}
+        VITE_VALID_EVIDENCE_DISTANCE_METERS: ${VALID_EVIDENCE_DISTANCE_METERS:-50}
+    container_name: wtracker_web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - wtracker_net
+
+# ── Volumes ────────────────────────────────────────
+volumes:
+  db_data:
+    name: wtracker_db_data
+  uploads_data:
+    name: wtracker_uploads
+
+# ── Networks ───────────────────────────────────────
+networks:
+  wtracker_net:
+    name: wtracker_network
+    driver: bridge

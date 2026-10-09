@@ -1,0 +1,8 @@
+name = "wtracker-web"
+compatibility_date = "2024-04-05"
+# Configuración básica para Workers/Containers
+# Si usas Workers Containers (beta) o Pages, ajusta el punto de entrada y el comando de build
+
+[build]
+command = "npm install && npm run build" # Ajusta si necesitas compilar algo específico
+cwd = "backend"

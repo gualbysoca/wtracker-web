@@ -114,6 +114,28 @@ export const MonitoringPage = () => {
 
   const [refreshing, setRefreshing]   = useState(false);
 
+  const fetchUserTasks = useCallback(async (userId: string) => {
+    setLoadingTasks(true);
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const res = await taskService.list({
+        user_id: userId,
+        date_from: today.toISOString(),
+        date_to: tomorrow.toISOString(),
+      });
+      setUserTasks(res.data || []);
+    } catch (err) {
+      console.error('[Monitoring] Error fetching user tasks:', err);
+      setUserTasks([]);
+    } finally {
+      setLoadingTasks(false);
+    }
+  }, []);
+
   const fetchLiveData = async () => {
     setRefreshing(true);
     try {
@@ -124,6 +146,14 @@ export const MonitoringPage = () => {
         lng: typeof u.lng === 'string' ? parseFloat(u.lng) : u.lng,
       }));
       setLiveUsers(normalized);
+      
+      // Forzar recarga de las tareas del usuario activo si existe
+      setSelected((currentSelected) => {
+        if (currentSelected) {
+          fetchUserTasks(currentSelected);
+        }
+        return currentSelected;
+      });
     } catch (err) {
       console.error('[Monitoring] Error fetching live map data:', err);
     } finally {
@@ -156,7 +186,18 @@ export const MonitoringPage = () => {
     return () => {
       sse.close();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Mantener sincronizado el selectedUser con la información en vivo (desde SSE o fetchLiveData)
+  useEffect(() => {
+    if (selected) {
+      const updatedUser = liveUsers.find(u => u.user_id === selected);
+      if (updatedUser && JSON.stringify(updatedUser) !== JSON.stringify(selectedUser)) {
+        setSelectedUser(updatedUser);
+      }
+    }
+  }, [liveUsers, selected, selectedUser]);
 
   const filteredUsers = liveUsers.filter(u => {
     const matchesRole = roleFilter === 'todos' || u.role.toLowerCase() === roleFilter.toLowerCase();
@@ -165,37 +206,14 @@ export const MonitoringPage = () => {
     return matchesRole && matchesName;
   });
 
-  // Fetch tasks when user is selected
+  // Fetch tasks inicial al cambiar la selección de usuario
   useEffect(() => {
-    if (!selectedUser) {
+    if (!selected) {
       setUserTasks([]);
       return;
     }
-
-    const fetchTasks = async () => {
-      setLoadingTasks(true);
-      try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-
-        const res = await taskService.list({
-          user_id: selectedUser.user_id,
-          date_from: today.toISOString(),
-          date_to: tomorrow.toISOString(),
-        });
-        setUserTasks(res.data || []);
-      } catch (err) {
-        console.error('[Monitoring] Error fetching user tasks:', err);
-        setUserTasks([]);
-      } finally {
-        setLoadingTasks(false);
-      }
-    };
-
-    fetchTasks();
-  }, [selectedUser?.user_id]);
+    fetchUserTasks(selected);
+  }, [selected, fetchUserTasks]);
 
   // Animated selection logic (same pattern as TasksPage)
   const handleSelectUser = useCallback((userId: string | null) => {

@@ -6,6 +6,7 @@ const { z } = require('zod');
 const VALID_STATUSES = ['en_ruta', 'visitado', 'fallido'];
 
 const createVisitSchema = z.object({
+  id: z.string().uuid().optional(),
   client_id: z
     .string({ required_error: 'El ID del cliente es requerido' })
     .regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i, 'El ID del cliente debe ser un UUID válido'),

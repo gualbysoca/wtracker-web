@@ -165,26 +165,51 @@ export const MonitoringPage = () => {
   useEffect(() => {
     fetchLiveData();
     
-    const token = localStorage.getItem('wt_access_token') || '';
-    const sseUrl = `${import.meta.env.VITE_API_URL || '/api/v1'}/dashboard/map/stream?token=${token}`;
-    const sse = new EventSource(sseUrl);
+    let sse: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout>;
 
-    sse.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        const normalized = (data || []).map((u: any) => ({
-          ...u,
-          lat: typeof u.lat === 'string' ? parseFloat(u.lat) : u.lat,
-          lng: typeof u.lng === 'string' ? parseFloat(u.lng) : u.lng,
-        }));
-        setLiveUsers(normalized);
-      } catch (err) {
-        console.error('[Monitoring] Error parsing SSE data:', err);
-      }
+    const connectSSE = () => {
+      const token = localStorage.getItem('wt_access_token') || '';
+      const sseUrl = `${import.meta.env.VITE_API_URL || '/api/v1'}/dashboard/map/stream?token=${token}`;
+      
+      if (sse) sse.close();
+      sse = new EventSource(sseUrl);
+
+      sse.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const normalized = (data || []).map((u: any) => ({
+            ...u,
+            lat: typeof u.lat === 'string' ? parseFloat(u.lat) : u.lat,
+            lng: typeof u.lng === 'string' ? parseFloat(u.lng) : u.lng,
+          }));
+          setLiveUsers(normalized);
+        } catch (err) {
+          console.error('[Monitoring] Error parsing SSE data:', err);
+        }
+      };
+
+      sse.onerror = (err) => {
+        console.error('[Monitoring] SSE connection error', err);
+        // On 401 token expiration, the connection will keep failing.
+        // Close it, trigger an api call to force token refresh via interceptor, then reconnect.
+        if (sse) sse.close();
+        
+        api.get('/settings')
+          .then(() => {
+            reconnectTimer = setTimeout(connectSSE, 2000);
+          })
+          .catch(() => {
+            reconnectTimer = setTimeout(connectSSE, 5000);
+          });
+      };
     };
 
+    connectSSE();
+
     return () => {
-      sse.close();
+      if (sse) sse.close();
+      clearTimeout(reconnectTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -7,7 +7,7 @@ const eventBus = require('../utils/eventBus');
 /**
  * Registra o actualiza una visita desde la app móvil
  */
-const createVisit = async ({ user_id, client_id, status, lat, lng, notes, timestamp }) => {
+const createVisit = async ({ id, user_id, client_id, status, lat, lng, notes, timestamp }) => {
   // Calcular distancia al cliente usando PostGIS
   const clientResult = await query(
     `SELECT lat, lng FROM clients WHERE id = $1 AND is_active = TRUE`,
@@ -86,13 +86,18 @@ const createVisit = async ({ user_id, client_id, status, lat, lng, notes, timest
 
   const result = await query(
     `INSERT INTO visits
-       (user_id, client_id, status, visit_lat, visit_lng,
+       (id, user_id, client_id, status, visit_lat, visit_lng,
         visit_location, distance_to_client, notes, started_at, completed_at)
      VALUES
-       ($1::uuid, $2::uuid, $3::visit_status, $4::numeric, $5::numeric,
+       (COALESCE($10::uuid, gen_random_uuid()), $1::uuid, $2::uuid, $3::visit_status, $4::numeric, $5::numeric,
         ST_SetSRID(ST_MakePoint($5::numeric, $4::numeric), 4326)::geography, $6::integer, $7::text, $8::timestamptz, $9::timestamptz)
+     ON CONFLICT (id) DO UPDATE SET 
+        status = EXCLUDED.status, 
+        visit_lat = EXCLUDED.visit_lat, 
+        visit_lng = EXCLUDED.visit_lng,
+        completed_at = EXCLUDED.completed_at
      RETURNING *`,
-    [user_id, client_id, status, lat, lng, distanceMeters, notes || null, startedAt, completedAt]
+    [user_id, client_id, status, lat, lng, distanceMeters, notes || null, startedAt, completedAt, id]
   );
 
   eventBus.emit('map_update');

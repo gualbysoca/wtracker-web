@@ -61,7 +61,13 @@ const streamLiveMapData = (req, res) => {
 
   eventBus.on('map_update', onUpdate);
 
+  // Send a heartbeat every 30 seconds to prevent Nginx / Cloudflare idle timeouts
+  const heartbeat = setInterval(() => {
+    res.write(': heartbeat\n\n');
+  }, 30000);
+
   req.on('close', () => {
+    clearInterval(heartbeat);
     eventBus.off('map_update', onUpdate);
   });
 };

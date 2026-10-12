@@ -11,11 +11,12 @@ max_instances = 5
 class_name = "MyContainer"
 name = "MY_CONTAINER"
 
-[exports.MyContainer]
-type = "durable-object"
-storage = "sqlite"
+
 
 [observability]
 enabled = true
 
 [previews]
+[exports.MyContainer]
+type = "durable-object"
+storage = "sqlite"

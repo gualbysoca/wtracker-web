@@ -17,10 +17,20 @@ export class MyContainer extends DurableObject {
     const newRequest = new Request(targetUrl.toString(), request);
     
     // Utiliza ctx.container o la API de fetch de workers si aplica
-    if (this.ctx && (this.ctx as any).container) {
-      // Verificando el estado a través del contenedor
+    const container = this.ctx && (this.ctx as any).container;
+    if (container) {
+      if (!container.running) {
+        container.start();
+      }
       try {
-        return await (this.ctx as any).container.fetch(newRequest);
+        // Rewrite request URL to target the internal container service
+        const containerUrl = new URL(request.url);
+        containerUrl.protocol = "http:";
+        containerUrl.host = "container";
+        const forwarded = new Request(containerUrl.toString(), request);
+        forwarded.headers.delete("host");
+
+        return await container.getTcpPort(3001).fetch(forwarded);
       } catch (err) {
         console.error("Error al comunicarse con el contenedor", err);
         return new Response("Error al comunicarse con el contenedor interno", { status: 502 });

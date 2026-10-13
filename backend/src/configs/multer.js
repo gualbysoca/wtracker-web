@@ -2,14 +2,8 @@
 // Configuración de Multer para subida de evidencias (fotos y firmas)
 
 const multer = require('multer');
-const path   = require('path');
-const { v4: uuidv4 } = require('uuid');
 
 const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_FILE_SIZE_MB) || 10;
-const UPLOAD_DIR_ENV   = process.env.UPLOAD_DIR || 'uploads';
-const UPLOAD_DIR       = require('path').isAbsolute(UPLOAD_DIR_ENV)
-  ? UPLOAD_DIR_ENV
-  : require('path').join(__dirname, '../../', UPLOAD_DIR_ENV);
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
@@ -20,16 +14,9 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/octet-stream',
 ]);
 
-const storage = multer.diskStorage({
-  destination: (req, file, callback) => {
-    callback(null, UPLOAD_DIR);
-  },
-  filename: (req, file, callback) => {
-    const extension = path.extname(file.originalname).toLowerCase();
-    const uniqueName = `${uuidv4()}${extension}`;
-    callback(null, uniqueName);
-  },
-});
+// En memoria: el archivo se comprime y se envía al almacenamiento (disco o R2) desde
+// evidence.service, que también genera el nombre único del objeto.
+const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, callback) => {
   if (ALLOWED_MIME_TYPES.has(file.mimetype)) {

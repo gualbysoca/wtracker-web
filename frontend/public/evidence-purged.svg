@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480" role="img" aria-labelledby="title desc">
+  <title id="title">Evidencia depurada</title>
+  <desc id="desc">El archivo de esta evidencia fue eliminado por la política de retención. Su registro se conserva.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1c2230"/>
+      <stop offset="1" stop-color="#121722"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="480" fill="url(#bg)"/>
+  <g fill="none" stroke="#5b7fd6" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" transform="translate(260 140)">
+    <rect x="0" y="0" width="120" height="96" rx="14"/>
+    <circle cx="38" cy="34" r="12"/>
+    <path d="M0 80 L40 48 L72 72 L92 56 L120 78"/>
+    <path d="M-12 -12 L132 108" stroke="#e5687a"/>
+  </g>
+  <text x="320" y="312" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="30" font-weight="600" fill="#eef1f7">Evidencia depurada</text>
+  <text x="320" y="350" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="18" fill="#8a93a6">El archivo se eliminó por retención; el registro se conserva.</text>
+</svg>

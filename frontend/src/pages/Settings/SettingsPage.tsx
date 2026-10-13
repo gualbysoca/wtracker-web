@@ -5,6 +5,19 @@ import toast from 'react-hot-toast';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { getMapTileUrl } from '../../utils/mapConfig';
+import { ToggleSwitch } from '../../components/ui/ToggleSwitch';
+import { EvidenceStorageSettingsCard } from './components/EvidenceStorageSettingsCard';
+import { useEvidenceStorageUsage } from './hooks/useEvidenceStorageUsage';
+import { DEFAULT_SETTINGS, mergeWithDefaultSettings, type SettingsValues } from './settings.constants';
+
+const SAVE_ERROR_FALLBACK_MESSAGE = 'Error al guardar configuraciones';
+
+const extractSaveErrorMessage = (error: unknown): string => {
+  const responseData = (error as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })
+    ?.response?.data;
+  const firstFieldError = Object.values(responseData?.errors ?? {}).flat()[0];
+  return firstFieldError || responseData?.message || SAVE_ERROR_FALLBACK_MESSAGE;
+};
 
 // Fix leaflet icon
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -15,26 +28,18 @@ L.Icon.Default.mergeOptions({
 });
 
 export const SettingsPage = () => {
-  const [settings, setSettings] = useState({
-    geofence_radius: '100',
-    gamification_sniper: '10',
-    gamification_on_fire: '20',
-    gamification_black_cloud: '5',
-    gamification_turtle: '60',
-    gamification_enabled: 'true',
-  });
+  const [settings, setSettings] = useState<SettingsValues>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(false);
+  const evidenceStorageUsage = useEvidenceStorageUsage();
 
   useEffect(() => {
     const fetchSettings = async () => {
       try {
         const res = await api.get('/settings');
-        // Asegurar que exista gamification_enabled
-        setSettings({
-          ...res.data.data,
-          gamification_enabled: res.data.data.gamification_enabled ?? 'true'
-        });
+        // Claves ausentes en BD (p.ej. gamification_enabled o evidence_*) toman su valor por defecto.
+        setSettings(mergeWithDefaultSettings(res.data.data));
       } catch (err) {
+        console.error('[Settings] Error al cargar configuraciones:', err);
         toast.error('Error al cargar configuraciones');
       }
     };
@@ -73,8 +78,9 @@ export const SettingsPage = () => {
   }, [settings.geofence_radius]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.type === 'checkbox' ? (e.target.checked ? 'true' : 'false') : e.target.value;
-    setSettings({ ...settings, [e.target.name]: value });
+    const { name, type, checked, value: rawValue } = e.target;
+    const value = type === 'checkbox' ? (checked ? 'true' : 'false') : rawValue;
+    setSettings((previousSettings) => ({ ...previousSettings, [name]: value }));
   };
 
   const handleSave = async () => {
@@ -82,8 +88,10 @@ export const SettingsPage = () => {
       setLoading(true);
       await api.put('/settings', settings);
       toast.success('Configuraciones guardadas exitosamente');
+      evidenceStorageUsage.refreshUsage();
     } catch (err) {
-      toast.error('Error al guardar configuraciones');
+      console.error('[Settings] Error al guardar configuraciones:', err);
+      toast.error(extractSaveErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -129,29 +137,12 @@ export const SettingsPage = () => {
       <div className="card" style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h2 style={{ fontSize: '1.25rem', margin: 0, color: 'white' }}>Gamificación</h2>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-            <span style={{ color: settings.gamification_enabled === 'true' ? 'var(--primary-color)' : 'var(--text-muted)', fontWeight: 600 }}>
-              {settings.gamification_enabled === 'true' ? 'Activada' : 'Desactivada'}
-            </span>
-            <div style={{
-              position: 'relative', width: '44px', height: '24px',
-              background: settings.gamification_enabled === 'true' ? 'var(--primary-color)' : 'var(--surface-border)',
-              borderRadius: '12px', transition: '0.3s'
-            }}>
-              <input
-                type="checkbox"
-                name="gamification_enabled"
-                checked={settings.gamification_enabled === 'true'}
-                onChange={handleChange}
-                style={{ opacity: 0, width: 0, height: 0 }}
-              />
-              <div style={{
-                position: 'absolute', top: '2px', left: settings.gamification_enabled === 'true' ? '22px' : '2px',
-                width: '20px', height: '20px', background: 'white', borderRadius: '50%', transition: '0.3s',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
-              }} />
-            </div>
-          </label>
+          <ToggleSwitch
+            id="gamification-enabled-toggle"
+            name="gamification_enabled"
+            checked={settings.gamification_enabled === 'true'}
+            onChange={handleChange}
+          />
         </div>
 
         <div style={{ opacity: settings.gamification_enabled === 'true' ? 1 : 0.5, pointerEvents: settings.gamification_enabled === 'true' ? 'auto' : 'none', transition: '0.3s' }}>
@@ -204,6 +195,14 @@ export const SettingsPage = () => {
           </div>
         </div>
       </div>
+
+      <EvidenceStorageSettingsCard
+        settings={settings}
+        onChange={handleChange}
+        usage={evidenceStorageUsage.usage}
+        isUsageLoading={evidenceStorageUsage.isLoading}
+        usageErrorMessage={evidenceStorageUsage.errorMessage}
+      />
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: '2rem' }}>
         <button

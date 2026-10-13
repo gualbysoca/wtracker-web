@@ -4,15 +4,20 @@
 
 const { Pool } = require('pg');
 
+// TLS para BD gestionadas (Supabase). El pooler usa un certificado de la CA de Supabase,
+// que no está en el store público de Node, por eso no se valida la cadena.
+const buildSslOptions = () => (process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false);
+
 const pool = new Pool({
   host:     process.env.DB_HOST     || 'localhost',
   port:     parseInt(process.env.DB_PORT) || 5432,
   database: process.env.DB_NAME     || 'wtracker_db',
   user:     process.env.DB_USER     || 'postgres',
   password: process.env.DB_PASSWORD || '',
-  max:      20,             // Máximo de conexiones en el pool
+  ssl:      buildSslOptions(),
+  max:      parseInt(process.env.DB_POOL_MAX) || 20, // Máximo de conexiones en el pool
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT_MS) || 2000,
 });
 
 pool.on('error', (err) => {

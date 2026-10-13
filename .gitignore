@@ -40,3 +40,6 @@ Thumbs.db
 uploads/
 **/uploads/*
 !**/uploads/.gitkeep
+
+# Wrangler local build/cache artifacts
+.wrangler/

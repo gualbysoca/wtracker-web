@@ -2,6 +2,7 @@
 const cron = require('node-cron');
 const { query } = require('../configs/database');
 const eventBus = require('../utils/eventBus');
+const { runEvidenceRetention } = require('./evidenceRetention.service');
 
 const startCronJobs = () => {
   // 1. Desconexión Visual (Cron de inactividad de 30 min)
@@ -60,7 +61,15 @@ const startCronJobs = () => {
     }
   });
 
-  console.log('[Cron] Servicios programados iniciados (Inactividad y Recolector Zombi).');
+  // 3. Depuración de evidencias (antigüedad máxima + tope de almacenamiento)
+  // Cada hora (minuto 15) y una vez al arrancar: en Cloudflare el contenedor duerme sin tráfico,
+  // por lo que no se puede depender solo del horario.
+  const runScheduledEvidenceRetention = () =>
+    runEvidenceRetention().catch((err) => console.error('[Cron] Error en la depuración de evidencias:', err));
+  cron.schedule('15 * * * *', runScheduledEvidenceRetention);
+  runScheduledEvidenceRetention();
+
+  console.log('[Cron] Servicios programados iniciados (Inactividad, Recolector Zombi y Depuración de evidencias).');
 };
 
 module.exports = { startCronJobs };

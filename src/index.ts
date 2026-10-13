@@ -1,52 +1,70 @@
 import { DurableObject } from "cloudflare:workers";
+import { CONTAINER_CONFIG } from "./configs/container.config";
+import { STORAGE_CONFIG } from "./configs/storage.config";
+import { ContainerNotReadyError, ContainerProxyService, type ContainerRuntime } from "./services/container-proxy.service";
+import { EvidenceStorageService, type EvidenceBucket } from "./services/evidence-storage.service";
+import { isBackendPath, pickStringEntries } from "./utils/request-routing.util";
 
 interface Env {
   MY_CONTAINER: DurableObjectNamespace;
+  ASSETS: Fetcher;
+  EVIDENCE_BUCKET: EvidenceBucket;
+  STORAGE_PROXY_TOKEN?: string;
 }
 
-export class MyContainer extends DurableObject {
+export class MyContainer extends DurableObject<Env> {
+  private readonly proxyService: ContainerProxyService | null;
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    const container = (ctx as unknown as { container?: ContainerRuntime }).container;
+    this.proxyService = container
+      ? new ContainerProxyService(
+          container,
+          CONTAINER_CONFIG,
+          pickStringEntries(env, CONTAINER_CONFIG.forwardedEnvKeys),
+          (promise) => ctx.waitUntil(promise),
+        )
+      : null;
   }
 
-  async fetch(request: Request) {
-    const url = new URL(request.url);
-    
-    // Reescribe la URL para enviarla al puerto expuesto por el contenedor (puerto 3001)
-    const targetUrl = new URL(`http://127.0.0.1:3001${url.pathname}${url.search}`);
-    const newRequest = new Request(targetUrl.toString(), request);
-    
-    // Utiliza ctx.container o la API de fetch de workers si aplica
-    const container = this.ctx && (this.ctx as any).container;
-    if (container) {
-      if (!container.running) {
-        container.start();
-      }
-      try {
-        // Rewrite request URL to target the internal container service
-        const containerUrl = new URL(request.url);
-        containerUrl.protocol = "http:";
-        containerUrl.host = "container";
-        const forwarded = new Request(containerUrl.toString(), request);
-        forwarded.headers.delete("host");
-
-        return await container.getTcpPort(3001).fetch(forwarded);
-      } catch (err) {
-        console.error("Error al comunicarse con el contenedor", err);
-        return new Response("Error al comunicarse con el contenedor interno", { status: 502 });
-      }
+  async fetch(request: Request): Promise<Response> {
+    if (!this.proxyService) {
+      return new Response("No hay un contenedor configurado para este Durable Object", { status: 503 });
     }
 
-    // Fallback de fetch estándar hacia el localhost del contenedor
-    return await fetch(newRequest);
+    try {
+      return await this.proxyService.forward(request);
+    } catch (error) {
+      console.error("Error al comunicarse con el contenedor", error);
+      const status = error instanceof ContainerNotReadyError ? 503 : 502;
+      return new Response("Error al comunicarse con el contenedor interno", {
+        status,
+        headers: { "Retry-After": "5" },
+      });
+    }
   }
 }
 
 export default {
-  async fetch(request: Request, env: Env) {
-    // Redirige todo el tráfico hacia la instancia del contenedor Durable Object
-    const id = env.MY_CONTAINER.idFromName("global-app-container");
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const { pathname } = new URL(request.url);
+    const evidenceStorage = new EvidenceStorageService(env.EVIDENCE_BUCKET, STORAGE_CONFIG, env.STORAGE_PROXY_TOKEN);
+
+    if (evidenceStorage.isPublicPath(pathname)) {
+      return evidenceStorage.handlePublicRequest(request, pathname);
+    }
+    if (evidenceStorage.isInternalPath(pathname)) {
+      return evidenceStorage.handleInternalRequest(request, pathname);
+    }
+
+    // Frontend (React SPA) is served from Workers Static Assets; only backend routes reach the container.
+    if (!isBackendPath(pathname, CONTAINER_CONFIG)) {
+      return env.ASSETS.fetch(request);
+    }
+
+    const id = env.MY_CONTAINER.idFromName(CONTAINER_CONFIG.instanceName);
     const stub = env.MY_CONTAINER.get(id);
     return await stub.fetch(request);
-  }
+  },
 };

@@ -1,6 +1,7 @@
 // src/controllers/visit.controller.js
 
 const visitService = require('../services/visit.service');
+const evidenceService = require('../services/evidence.service');
 const { createVisitSchema, visitQuerySchema } = require('../validations/visit.validation');
 const { sendSuccess, sendError, sendPaginated } = require('../utils/responseFormatter');
 const eventBus = require('../utils/eventBus');
@@ -109,28 +110,16 @@ const mobileUploadEvidence = async (req, res, next) => {
     }
 
     const { lat, lng, captured_at, type } = req.body;
-    const visitId = req.params.id;
+    const evidence = await evidenceService.createEvidence({
+      visitId: req.params.id,
+      file: req.file,
+      type,
+      lat,
+      lng,
+      capturedAt: captured_at,
+    });
 
-    const { query } = require('../configs/database');
-
-    const result = await query(
-      `INSERT INTO evidence (visit_id, type, file_url, file_name, file_size, mime_type, lat, lng, captured_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING id, visit_id, type, file_url, lat, lng, captured_at, created_at`,
-      [
-        visitId,
-        type || 'foto',
-        `/uploads/${req.file.filename}`,
-        req.file.originalname,
-        req.file.size,
-        req.file.mimetype,
-        lat || null,
-        lng || null,
-        captured_at ? new Date(captured_at) : new Date(),
-      ]
-    );
-
-    return sendSuccess(res, result.rows[0], 'Evidencia subida exitosamente', 201);
+    return sendSuccess(res, evidence, 'Evidencia subida exitosamente', 201);
   } catch (error) {
     return next(error);
   }

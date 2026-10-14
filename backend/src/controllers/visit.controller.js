@@ -2,6 +2,7 @@
 
 const visitService = require('../services/visit.service');
 const evidenceService = require('../services/evidence.service');
+const { getGeofenceRadiusMeters } = require('../services/setting.service');
 const { createVisitSchema, visitQuerySchema } = require('../validations/visit.validation');
 const { sendSuccess, sendError, sendPaginated } = require('../utils/responseFormatter');
 const eventBus = require('../utils/eventBus');
@@ -129,16 +130,18 @@ const mobileSyncData = async (req, res, next) => {
   try {
     // Retorna la última marca de tiempo de sincronización del servidor
     const { query } = require('../configs/database');
-    const [clients, visits] = await Promise.all([
-      query(`SELECT id, business_name, lat, lng, geofence_radius, updated_at
+    const [clients, visits, geofenceRadius] = await Promise.all([
+      query(`SELECT id, business_name, lat, lng, updated_at
              FROM clients WHERE is_active = TRUE ORDER BY updated_at DESC LIMIT 500`),
       query(`SELECT id, client_id, status, updated_at
              FROM visits WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 100`, [req.user.id]),
+      getGeofenceRadiusMeters(),
     ]);
 
     return sendSuccess(res, {
-      clients:    clients.rows,
+      clients:    clients.rows.map((client) => ({ ...client, geofence_radius: geofenceRadius })),
       my_visits:  visits.rows,
+      geofence_radius: geofenceRadius,
       server_time: new Date().toISOString(),
     }, 'Sincronización completada');
   } catch (error) {

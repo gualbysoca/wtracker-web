@@ -8,6 +8,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/',     authorize('admin', 'supervisor'),               controller.listClients);
+router.post('/bulk', authorize('admin', 'supervisor'),              controller.bulkClients);
 router.get('/:id',  authorize('admin', 'supervisor'),               controller.getClient);
 router.post('/',    authorize('admin', 'supervisor'),               controller.createClient);
 router.put('/:id',  authorize('admin', 'supervisor'),               controller.updateClient);

@@ -1,7 +1,7 @@
 // src/pages/Clients/ClientsPage.tsx
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Store, Search, MapPin, Plus, Edit2, Trash2, X, Phone, Mail, ChevronRight, ClipboardList, User as UserIcon, Calendar, FileImage, Clock, Maximize, Minimize } from 'lucide-react';
+import { Store, Search, MapPin, Plus, Edit2, Trash2, X, Phone, Mail, ChevronRight, ClipboardList, User as UserIcon, Calendar, FileImage, Clock, Maximize, Minimize, Upload, Download } from 'lucide-react';
 import type { Client, Visit } from '../../types';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ImageModal } from '../../components/ui/ImageModal';
@@ -16,6 +16,9 @@ import L from 'leaflet';
 import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
 import api from '../../services/api';
+import { BulkClientsModal } from './components/BulkClientsModal';
+import { buildClientsExportCsv } from './clientCsv';
+import { downloadCsvFile } from '../../utils/csv';
 
 // Fix icon paths for leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -209,6 +212,10 @@ export const ClientsPage = () => {
   const listCollapsed = !!selectedTask;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
   const [formData, setFormData] = useState({
@@ -219,8 +226,7 @@ export const ClientsPage = () => {
     address: '',
     city: 'Santa Cruz',
     lat: BOLIVIA_CITIES['Santa Cruz'].lat,
-    lng: BOLIVIA_CITIES['Santa Cruz'].lng,
-    geofence_radius: 50
+    lng: BOLIVIA_CITIES['Santa Cruz'].lng
   });
 
   const mapRef = useRef<HTMLDivElement>(null);
@@ -319,7 +325,7 @@ export const ClientsPage = () => {
     setEditingId(null);
     setFormData({
       business_name: '', contact_name: '', phone: '', email: '', address: '', 
-      city: 'Santa Cruz', lat: BOLIVIA_CITIES['Santa Cruz'].lat, lng: BOLIVIA_CITIES['Santa Cruz'].lng, geofence_radius: 50
+      city: 'Santa Cruz', lat: BOLIVIA_CITIES['Santa Cruz'].lat, lng: BOLIVIA_CITIES['Santa Cruz'].lng
     });
     setFormErrors({});
     setIsModalOpen(true);
@@ -336,8 +342,7 @@ export const ClientsPage = () => {
       address: client.address || '',
       city: client.city || 'Santa Cruz',
       lat: client.lat,
-      lng: client.lng,
-      geofence_radius: client.geofence_radius
+      lng: client.lng
     });
     setFormErrors({});
     setIsModalOpen(true);
@@ -350,7 +355,9 @@ export const ClientsPage = () => {
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    if (deletingId) return;
     if (!confirm('¿Estás seguro de que deseas eliminar este cliente?')) return;
+    setDeletingId(id);
     try {
       await clientService.remove(id);
       setClients(prev => prev.filter(c => c.id !== id));
@@ -359,23 +366,41 @@ export const ClientsPage = () => {
     } catch (err) {
       console.error('[wtracker] Error eliminando cliente:', err);
       toast.error('Error al eliminar el cliente. Intente de nuevo.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const allClients = await clientService.listAll();
+      downloadCsvFile('clientes.csv', buildClientsExportCsv(allClients));
+    } catch (err) {
+      console.error('[wtracker] Error exportando clientes:', err);
+      toast.error('Error al descargar el listado de clientes');
+    } finally {
+      setIsExporting(false);
     }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     const normalizeClient = (c: any): Client => ({
       ...c,
       lat: typeof c.lat === 'string' ? parseFloat(c.lat) : c.lat,
       lng: typeof c.lng === 'string' ? parseFloat(c.lng) : c.lng,
     });
-    try {
-      if (formData.phone && !isValidPhoneNumber(formData.phone)) {
-        setFormErrors({ phone: ['El número de teléfono ingresado no es válido'] });
-        toast.error('Por favor, ingresa un número de teléfono válido');
-        return;
-      }
+    if (formData.phone && !isValidPhoneNumber(formData.phone)) {
+      setFormErrors({ phone: ['El número de teléfono ingresado no es válido'] });
+      toast.error('Por favor, ingresa un número de teléfono válido');
+      return;
+    }
 
+    setIsSaving(true);
+    try {
       if (editingId) {
         const updated = await clientService.update(editingId, formData);
         const updatedClient = normalizeClient(updated ?? { ...clients.find(c => c.id === editingId)!, ...formData });
@@ -399,8 +424,10 @@ export const ClientsPage = () => {
     } catch (err) {
       console.error('[wtracker] Error guardando cliente:', err);
       toast.error('Error al guardar el cliente. Intente de nuevo.');
+    } finally {
+      setIsSaving(false);
+      setIsModalOpen(false);
     }
-    setIsModalOpen(false);
   };
 
   const handleRowClick = useCallback((client: Client) => {
@@ -432,10 +459,20 @@ export const ClientsPage = () => {
           <h1>Directorio de Clientes</h1>
           <p>Directorio master de puntos de venta y clientes</p>
         </div>
-        <button className="btn btn-primary" onClick={handleOpenCreate}>
-          <Plus size={16} />
-          Nuevo Cliente
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-secondary" onClick={handleExportCsv} disabled={isExporting}>
+            <Download size={16} />
+            {isExporting ? 'Descargando...' : 'Descargar CSV'}
+          </button>
+          <button className="btn btn-secondary" onClick={() => setIsBulkModalOpen(true)}>
+            <Upload size={16} />
+            Carga masiva
+          </button>
+          <button className="btn btn-primary" onClick={handleOpenCreate}>
+            <Plus size={16} />
+            Nuevo Cliente
+          </button>
+        </div>
       </div>
 
       {/* Main grid */}
@@ -554,6 +591,7 @@ export const ClientsPage = () => {
                                 title="Eliminar"
                                 style={{ color: 'var(--color-danger)' }}
                                 onClick={(e) => handleDelete(e, client.id)}
+                                disabled={deletingId !== null}
                               >
                                 <Trash2 size={16} />
                               </button>
@@ -1076,13 +1114,21 @@ export const ClientsPage = () => {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancelar</button>
-                  <button type="submit" className="btn btn-primary">{editingId ? 'Guardar Cambios' : 'Crear Cliente'}</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)} disabled={isSaving}>Cancelar</button>
+                  <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                    {isSaving ? 'Guardando...' : (editingId ? 'Guardar Cambios' : 'Crear Cliente')}
+                  </button>
                 </div>
               </form>
             </div>
           </div>
         </div>
+      )}
+      {isBulkModalOpen && (
+        <BulkClientsModal
+          onClose={() => setIsBulkModalOpen(false)}
+          onCompleted={loadClients}
+        />
       )}
       {/* Modal Visor de Imagen */}
       {fullScreenImage && (

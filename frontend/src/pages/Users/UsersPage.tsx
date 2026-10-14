@@ -41,6 +41,8 @@ export const UsersPage = () => {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+  const isBusy = isCreating || pendingUserId !== null;
   const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -102,27 +104,41 @@ export const UsersPage = () => {
   };
 
   const handleDelete = async (id: string) => {
+    if (isBusy) return;
     if (!confirm('¿Estás seguro de que deseas eliminar este usuario?')) return;
+    setPendingUserId(id);
     try {
       await userService.deactivate(id);
       toast.success('Usuario eliminado');
       fetchUsers();
     } catch (error) {
       toast.error('Error al eliminar el usuario');
+    } finally {
+      setPendingUserId(null);
     }
   };
   const handleToggleStatus = async (user: User) => {
+    if (isBusy) return;
+    setPendingUserId(user.id);
     try {
       await userService.update(user.id, { is_active: !user.is_active });
       toast.success(`Usuario ${user.is_active ? 'desactivado' : 'activado'} correctamente`);
       fetchUsers();
     } catch (error) {
       toast.error('Error al cambiar el estado del usuario');
+    } finally {
+      setPendingUserId(null);
     }
+  };
+
+  const handleCloseModal = () => {
+    if (isCreating) return;
+    setIsModalOpen(false);
   };
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
+    if (isBusy) return;
     setIsCreating(true);
     setFormErrors({});
     try {
@@ -315,6 +331,7 @@ export const UsersPage = () => {
                           type="checkbox" 
                           style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
                           checked={user.is_active}
+                          disabled={isBusy}
                           onChange={() => handleToggleStatus(user)}
                         />
                         <div style={{
@@ -345,10 +362,10 @@ export const UsersPage = () => {
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button className="btn btn-ghost btn-sm btn-icon" title="Editar" onClick={() => handleOpenEdit(user)}>
+                      <button className="btn btn-ghost btn-sm btn-icon" title="Editar" onClick={() => handleOpenEdit(user)} disabled={isBusy}>
                         <Edit2 size={16} />
                       </button>
-                      <button className="btn btn-ghost btn-sm btn-icon" title="Eliminar" style={{ color: 'var(--color-danger)' }} onClick={() => handleDelete(user.id)}>
+                      <button className="btn btn-ghost btn-sm btn-icon" title="Eliminar" style={{ color: 'var(--color-danger)' }} onClick={() => handleDelete(user.id)} disabled={isBusy}>
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -371,7 +388,7 @@ export const UsersPage = () => {
                   {editingId ? 'Editando información del usuario' : 'Añadiendo un nuevo usuario a la plataforma'}
                 </div>
               </div>
-              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setIsModalOpen(false)} aria-label="Cerrar">
+              <button className="btn btn-ghost btn-sm btn-icon" onClick={handleCloseModal} disabled={isCreating} aria-label="Cerrar">
                 <X size={18} />
               </button>
             </div>
@@ -403,7 +420,7 @@ export const UsersPage = () => {
                     {formErrors.role && <div style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{formErrors.role[0]}</div>}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-                    <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancelar</button>
+                    <button type="button" className="btn btn-secondary" onClick={handleCloseModal} disabled={isCreating}>Cancelar</button>
                     <button type="submit" className="btn btn-primary" disabled={isCreating}>{isCreating ? 'Guardando...' : (editingId ? 'Guardar Cambios' : 'Crear Usuario')}</button>
                   </div>
                 </form>
@@ -448,7 +465,7 @@ export const UsersPage = () => {
                     {formErrors.phone && <div style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{formErrors.phone[0]}</div>}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-                    <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancelar</button>
+                    <button type="button" className="btn btn-secondary" onClick={handleCloseModal} disabled={isCreating}>Cancelar</button>
                     <button type="submit" className="btn btn-primary" disabled={isCreating}>{isCreating ? 'Guardando...' : (editingId ? 'Guardar Cambios' : 'Crear Usuario')}</button>
                   </div>
                 </form>

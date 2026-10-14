@@ -34,10 +34,6 @@ const createClientSchema = z.object({
   lng: z
     .number({ required_error: 'La longitud GPS es requerida' })
     .min(-180).max(180),
-  geofence_radius: z
-    .number().int().positive().max(5000)
-    .default(100)
-    .optional(),
   notes:           emptyToNull,
 });
 
@@ -49,4 +45,21 @@ const clientQuerySchema = z.object({
   search: z.string().optional(),
 });
 
-module.exports = { createClientSchema, updateClientSchema, clientQuerySchema };
+const BULK_MAX_ROWS = 1000;
+const BULK_ACTIONS = ['create', 'update', 'delete'];
+
+const bulkClientsSchema = z.object({
+  rows: z
+    .array(
+      z.object({
+        line:   z.number().int().positive(),
+        action: z.enum(BULK_ACTIONS),
+        id:     z.string().uuid().optional(),
+        data:   z.record(z.string(), z.unknown()).optional(),
+      })
+    )
+    .min(1, 'El archivo no contiene filas')
+    .max(BULK_MAX_ROWS, `Máximo ${BULK_MAX_ROWS} filas por carga`),
+});
+
+module.exports = { createClientSchema, updateClientSchema, clientQuerySchema, bulkClientsSchema, BULK_MAX_ROWS };

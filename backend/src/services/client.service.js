@@ -2,6 +2,8 @@
 // Lógica de negocio para el directorio master de clientes
 
 const { query } = require('../configs/database');
+const { createClientSchema, updateClientSchema } = require('../validations/client.validation');
+const { getGeofenceRadiusMeters } = require('./setting.service');
 
 const listClients = async ({ page = 1, limit = 20, search }) => {
   const offset = (page - 1) * limit;
@@ -23,7 +25,7 @@ const listClients = async ({ page = 1, limit = 20, search }) => {
   const result = await query(
     `SELECT
        id, business_name, contact_name, phone, email,
-       address, city, lat, lng, geofence_radius, notes, is_active, created_at
+       address, city, lat, lng, notes, is_active, created_at
      FROM clients
      WHERE ${whereClause}
      ORDER BY business_name ASC
@@ -35,28 +37,33 @@ const listClients = async ({ page = 1, limit = 20, search }) => {
 };
 
 /**
- * Obtiene todos los clientes activos con su historial resumido (para la app móvil)
+ * Obtiene todos los clientes activos con su historial resumido (para la app móvil).
+ * `geofence_radius` se mantiene en la respuesta por compatibilidad con versiones previas de la app,
+ * pero ahora siempre es el radio global de Configuraciones (ya no existe por cliente).
  */
 const listClientsForMobile = async () => {
-  const result = await query(
-    `SELECT
-       c.id, c.business_name, c.contact_name, c.phone,
-       c.address, c.lat, c.lng, c.geofence_radius,
-       -- Último estado de visita
-       (SELECT v.status
-        FROM visits v
-        WHERE v.client_id = c.id
-        ORDER BY v.created_at DESC LIMIT 1) AS last_visit_status,
-       (SELECT v.created_at
-        FROM visits v
-        WHERE v.client_id = c.id
-        ORDER BY v.created_at DESC LIMIT 1) AS last_visit_at
-     FROM clients c
-     WHERE c.is_active = TRUE
-     ORDER BY c.business_name ASC`
-  );
+  const [result, geofenceRadius] = await Promise.all([
+    query(
+      `SELECT
+         c.id, c.business_name, c.contact_name, c.phone,
+         c.address, c.lat, c.lng,
+         -- Último estado de visita
+         (SELECT v.status
+          FROM visits v
+          WHERE v.client_id = c.id
+          ORDER BY v.created_at DESC LIMIT 1) AS last_visit_status,
+         (SELECT v.created_at
+          FROM visits v
+          WHERE v.client_id = c.id
+          ORDER BY v.created_at DESC LIMIT 1) AS last_visit_at
+       FROM clients c
+       WHERE c.is_active = TRUE
+       ORDER BY c.business_name ASC`
+    ),
+    getGeofenceRadiusMeters(),
+  ]);
 
-  return result.rows;
+  return result.rows.map((row) => ({ ...row, geofence_radius: geofenceRadius }));
 };
 
 const getClientById = async (id) => {
@@ -77,24 +84,24 @@ const getClientById = async (id) => {
 };
 
 const createClient = async (data) => {
-  const { business_name, contact_name, phone, email, address, city, lat, lng, geofence_radius, notes } = data;
+  const { business_name, contact_name, phone, email, address, city, lat, lng, notes } = data;
 
   // lat/lng se pasan como strings para evitar la ambigüedad de tipos que PostgreSQL
   // genera cuando el mismo parámetro aparece en una columna numeric Y en ST_MakePoint(float8)
   const result = await query(
     `INSERT INTO clients
        (business_name, contact_name, phone, email, address, city,
-        lat, lng, location, geofence_radius, notes)
+        lat, lng, location, notes)
      VALUES
        ($1, $2, $3, $4, $5, $6,
         ($7::text)::numeric, ($8::text)::numeric,
         ST_MakePoint(($8::text)::float8, ($7::text)::float8)::geography,
-        $9, $10)
-     RETURNING id, business_name, contact_name, phone, email, address, city, lat, lng, geofence_radius, created_at`,
+        $9)
+     RETURNING id, business_name, contact_name, phone, email, address, city, lat, lng, created_at`,
     [business_name, contact_name || null, phone || null, email || null,
      address || null, city || null,
      String(lat), String(lng),
-     geofence_radius || 100, notes || null]
+     notes || null]
   );
 
   return result.rows[0];
@@ -104,7 +111,7 @@ const updateClient = async (id, data) => {
   const fields = [];
   const params = [];
 
-  const UPDATABLE = ['business_name', 'contact_name', 'phone', 'email', 'address', 'city', 'geofence_radius', 'notes', 'is_active'];
+  const UPDATABLE = ['business_name', 'contact_name', 'phone', 'email', 'address', 'city', 'notes', 'is_active'];
 
   for (const field of UPDATABLE) {
     if (data[field] !== undefined) {
@@ -125,7 +132,7 @@ const updateClient = async (id, data) => {
   params.push(id);
   const result = await query(
     `UPDATE clients SET ${fields.join(', ')} WHERE id = $${params.length}
-     RETURNING id, business_name, contact_name, phone, email, address, city, lat, lng, geofence_radius, notes, is_active, created_at, updated_at`,
+     RETURNING id, business_name, contact_name, phone, email, address, city, lat, lng, notes, is_active, created_at, updated_at`,
     params
   );
 
@@ -136,6 +143,51 @@ const deleteClient = async (id) => {
   await query(`UPDATE clients SET is_active = FALSE WHERE id = $1`, [id]);
 };
 
+const formatValidationIssues = (issues) =>
+  issues.map((issue) => `${issue.path.join('.') || 'fila'}: ${issue.message}`).join('; ');
+
+const applyBulkRow = async ({ action, id, data = {} }) => {
+  if (action === 'create') {
+    const parsed = createClientSchema.safeParse(data);
+    if (!parsed.success) throw new Error(formatValidationIssues(parsed.error.issues));
+    await createClient(parsed.data);
+    return;
+  }
+
+  if (!id) throw new Error('Se requiere el id del cliente');
+  const existing = await getClientById(id);
+  if (!existing) throw new Error('Cliente no encontrado');
+
+  if (action === 'delete') {
+    await deleteClient(id);
+    return;
+  }
+
+  const parsed = updateClientSchema.safeParse(data);
+  if (!parsed.success) throw new Error(formatValidationIssues(parsed.error.issues));
+  await updateClient(id, parsed.data);
+};
+
+/**
+ * Procesa filas de un CSV. Cada fila es independiente: un error no revierte las demás,
+ * y se devuelve el detalle por fila para que el usuario corrija solo las fallidas.
+ */
+const bulkProcessClients = async (rows) => {
+  const summary = { created: 0, updated: 0, deleted: 0, errors: [] };
+  const counterByAction = { create: 'created', update: 'updated', delete: 'deleted' };
+
+  for (const row of rows) {
+    try {
+      await applyBulkRow(row);
+      summary[counterByAction[row.action]] += 1;
+    } catch (error) {
+      summary.errors.push({ line: row.line, message: error.message });
+    }
+  }
+
+  return summary;
+};
+
 module.exports = {
   listClients,
   listClientsForMobile,
@@ -143,4 +195,5 @@ module.exports = {
   createClient,
   updateClient,
   deleteClient,
+  bulkProcessClients,
 };

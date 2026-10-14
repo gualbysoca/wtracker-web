@@ -19,6 +19,10 @@ import api from '../../services/api';
 import { BulkClientsModal } from './components/BulkClientsModal';
 import { buildClientsExportCsv } from './clientCsv';
 import { downloadCsvFile } from '../../utils/csv';
+import { PaginationBar } from '../../components/ui/PaginationBar';
+
+const CLIENTS_PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 350;
 
 // Fix icon paths for leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -163,6 +167,9 @@ export const ClientsPage = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalClients, setTotalClients] = useState(0);
   
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [detailVisible, setDetailVisible]   = useState(false);
@@ -234,12 +241,22 @@ export const ClientsPage = () => {
   const detailMarkerInst = useRef<L.Marker | null>(null);
 
   // ── Cargar clientes desde la API ──────────────────────────
-  const loadClients = async () => {
+  const loadClients = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await clientService.list({ limit: 200 });
+      const response = await clientService.list({
+        page,
+        limit: CLIENTS_PAGE_SIZE,
+        search: debouncedSearch.trim() || undefined,
+      });
       // La API devuelve { success, data: Client[], pagination }
       const items: Client[] = Array.isArray(response) ? response : (response as any).data ?? [];
+      const total = response.pagination?.total ?? items.length;
+      // Si la página quedó vacía (ej. tras eliminar el último registro), retroceder una página
+      if (items.length === 0 && page > 1) {
+        setPage(page - 1);
+        return;
+      }
       // Normalizar lat/lng a number (PostgreSQL devuelve numeric como string)
       const normalized = items.map((c: any) => ({
         ...c,
@@ -247,14 +264,24 @@ export const ClientsPage = () => {
         lng: typeof c.lng === 'string' ? parseFloat(c.lng) : c.lng,
       }));
       setClients(normalized);
+      setTotalClients(total);
     } catch (err) {
       console.error('[wtracker] Error cargando clientes:', err);
+      toast.error('Error al cargar los clientes');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [page, debouncedSearch]);
 
-  useEffect(() => { loadClients(); }, []);
+  useEffect(() => { loadClients(); }, [loadClients]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const fetchClientTasks = useCallback(async () => {
     if (!selectedClient || detailsTab !== 'tareas') return;
@@ -316,10 +343,8 @@ export const ClientsPage = () => {
     };
   }, [detailsTab, selectedClient]);
 
-  const filtered = clients.filter(c =>
-    c.business_name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.contact_name ?? '').toLowerCase().includes(search.toLowerCase())
-  );
+  // La búsqueda se resuelve en el servidor; la lista ya llega filtrada y paginada
+  const filtered = clients;
 
   const handleOpenCreate = () => {
     setEditingId(null);
@@ -360,8 +385,8 @@ export const ClientsPage = () => {
     setDeletingId(id);
     try {
       await clientService.remove(id);
-      setClients(prev => prev.filter(c => c.id !== id));
       if (selectedClient?.id === id) setSelectedClient(null);
+      await loadClients();
       toast.success('Cliente eliminado');
     } catch (err) {
       console.error('[wtracker] Error eliminando cliente:', err);
@@ -497,16 +522,22 @@ export const ClientsPage = () => {
             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0
           }}>
             <div className="card" style={{ padding: '1rem 1.5rem', flexShrink: 0 }}>
-              <div className="search-bar">
-                <Search size={16} className="search-bar-icon" />
-                <input
-                  id="clients-search"
-                  type="text"
-                  className="form-input"
-                  placeholder="Buscar por nombre de mercado o contacto..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                <div className="search-bar" style={{ flex: 1, minWidth: '220px' }}>
+                  <Search size={16} className="search-bar-icon" />
+                  <input
+                    id="clients-search"
+                    type="text"
+                    className="form-input"
+                    placeholder="Buscar por nombre de mercado o contacto..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <span id="clients-total-counter" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                  <strong style={{ color: 'var(--text-primary)', fontSize: '1rem' }}>{totalClients.toLocaleString('es-BO')}</strong>{' '}
+                  {debouncedSearch.trim() ? (totalClients === 1 ? 'resultado' : 'resultados') : (totalClients === 1 ? 'cliente registrado' : 'clientes registrados')}
+                </span>
               </div>
             </div>
           <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1 }}>
@@ -627,6 +658,14 @@ export const ClientsPage = () => {
                 </tbody>
               </table>
             </div>
+            <PaginationBar
+              page={page}
+              pageSize={CLIENTS_PAGE_SIZE}
+              total={totalClients}
+              itemLabel="clientes"
+              disabled={isLoading}
+              onPageChange={setPage}
+            />
           </div>
         </div>
 

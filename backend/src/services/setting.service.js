@@ -66,8 +66,21 @@ const getEvidenceStorageSettings = async () => {
   });
 };
 
+const DEFAULT_GEOFENCE_RADIUS_METERS = 100;
+const GEOFENCE_RADIUS_LIMITS = Object.freeze({ min: 10, max: 5000 });
+
+/**
+ * Radio de tolerancia global (Configuraciones > Geofence y Tolerancia). Es la única fuente
+ * de verdad para validar la posición de evidencias respecto a cualquier cliente.
+ */
+const getGeofenceRadiusMeters = async () => {
+  const result = await query('SELECT value FROM settings WHERE key = $1', ['geofence_radius']);
+  return parseNumberSetting(result.rows[0]?.value, DEFAULT_GEOFENCE_RADIUS_METERS, GEOFENCE_RADIUS_LIMITS);
+};
+
 module.exports = {
   getAllSettings,
   updateSettings,
   getEvidenceStorageSettings,
+  getGeofenceRadiusMeters,
 };

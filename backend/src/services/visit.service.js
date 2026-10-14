@@ -152,7 +152,7 @@ const listVisits = async ({ page = 1, limit = 20, search, user_id, client_id, st
        v.id, v.status, v.visit_lat, v.visit_lng, v.distance_to_client,
        v.notes, v.started_at, v.completed_at, v.created_at,
        u.id AS user_id, u.full_name AS user_name, u.email AS user_email, u.role AS user_role,
-       c.id AS client_id, c.business_name AS client_name, c.contact_name AS client_contact, c.address AS client_address, c.lat AS client_lat, c.lng AS client_lng, c.geofence_radius AS client_geofence_radius,
+       c.id AS client_id, c.business_name AS client_name, c.contact_name AS client_contact, c.address AS client_address, c.lat AS client_lat, c.lng AS client_lng,
        COALESCE((
          SELECT json_agg(json_build_object('id', e.id, 'file_url', e.file_url, 'type', e.type, 'lat', e.lat, 'lng', e.lng, 'captured_at', e.captured_at, 'purged_at', e.purged_at))
          FROM evidence e WHERE e.visit_id = v.id

@@ -1,7 +1,7 @@
 // src/controllers/client.controller.js
 
 const clientService = require('../services/client.service');
-const { createClientSchema, updateClientSchema, clientQuerySchema } = require('../validations/client.validation');
+const { createClientSchema, updateClientSchema, clientQuerySchema, bulkClientsSchema } = require('../validations/client.validation');
 const { sendSuccess, sendError, sendPaginated } = require('../utils/responseFormatter');
 
 const listClients = async (req, res, next) => {
@@ -66,4 +66,18 @@ const deleteClient = async (req, res, next) => {
   }
 };
 
-module.exports = { listClients, getClient, createClient, updateClient, deleteClient };
+const bulkClients = async (req, res, next) => {
+  try {
+    const parsed = bulkClientsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, 'Datos inválidos', 400, parsed.error.flatten().fieldErrors);
+    }
+
+    const summary = await clientService.bulkProcessClients(parsed.data.rows);
+    return sendSuccess(res, summary, 'Carga masiva procesada');
+  } catch (error) {
+    return next(error);
+  }
+};
+
+module.exports = { listClients, getClient, createClient, updateClient, deleteClient, bulkClients };

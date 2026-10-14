@@ -44,7 +44,6 @@ export interface Client {
   city: string | null;
   lat: number;
   lng: number;
-  geofence_radius: number;
   notes: string | null;
   is_active: boolean;
   created_at: string;
@@ -69,7 +68,6 @@ export interface Visit {
   client_address: string;
   client_lat: number | null;
   client_lng: number | null;
-  client_geofence_radius: number;
   status: VisitStatus;
   visit_lat: number | null;
   visit_lng: number | null;

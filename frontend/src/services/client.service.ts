@@ -20,6 +20,23 @@ export interface BulkClientsSummary {
   errors: { line: number; message: string }[];
 }
 
+const BULK_CHUNK_SIZE = 50;
+const BULK_REQUEST_TIMEOUT_MS = 120000;
+
+const mergeBulkSummaries = (summaries: BulkClientsSummary[]): BulkClientsSummary =>
+  summaries.reduce<BulkClientsSummary>(
+    (total, current) => ({
+      created: total.created + current.created,
+      updated: total.updated + current.updated,
+      deleted: total.deleted + current.deleted,
+      errors: [...total.errors, ...current.errors],
+    }),
+    { created: 0, updated: 0, deleted: 0, errors: [] }
+  );
+
+const splitIntoChunks = <T,>(items: T[], size: number): T[][] =>
+  Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
+
 export const clientService = {
   async list(filters: ClientFilters = {}): Promise<PaginatedResponse<Client>> {
     const { data } = await apiClient.get('/clients', { params: filters });
@@ -46,8 +63,12 @@ export const clientService = {
   },
 
   async bulk(rows: BulkClientRow[]): Promise<BulkClientsSummary> {
-    const { data } = await apiClient.post('/clients/bulk', { rows });
-    return data.data as BulkClientsSummary;
+    const summaries: BulkClientsSummary[] = [];
+    for (const chunk of splitIntoChunks(rows, BULK_CHUNK_SIZE)) {
+      const { data } = await apiClient.post('/clients/bulk', { rows: chunk }, { timeout: BULK_REQUEST_TIMEOUT_MS });
+      summaries.push(data.data as BulkClientsSummary);
+    }
+    return mergeBulkSummaries(summaries);
   },
 
   async listAll(): Promise<Client[]> {

@@ -19,6 +19,12 @@ const startCronJobs = () => {
             WHERE ul.user_id = u.id 
               AND ul.captured_at >= NOW() - INTERVAL '30 minutes'
           )
+          AND NOT EXISTS (
+            SELECT 1 FROM visits v
+            WHERE v.user_id = u.id
+              AND v.status = 'en_ruta'
+              AND DATE(v.created_at) = CURRENT_DATE
+          )
       `);
       
       if (res.rowCount > 0) {

@@ -97,9 +97,10 @@ interface LiveMapProps {
   height?: number | string;
   selectedUserId?: string | null;
   isCompressed?: boolean;
+  refreshTrigger?: number;
 }
 
-export const LiveMap = ({ users, height = 420, selectedUserId, isCompressed = false }: LiveMapProps) => {
+export const LiveMap = ({ users, height = 420, selectedUserId, isCompressed = false, refreshTrigger }: LiveMapProps) => {
   const mapRef  = useRef<HTMLDivElement>(null);
   const mapInst = useRef<L.Map | null>(null);
 
@@ -316,6 +317,34 @@ export const LiveMap = ({ users, height = 420, selectedUserId, isCompressed = fa
         }, 300); // 300ms matches the layout transition duration
       }
     }, [selectedUserId, displayUsers]);
+
+    // Forzar actualización y re-centrado/ajuste de cámara en refresco manual
+    useEffect(() => {
+      const map = mapInst.current;
+      if (!map || !refreshTrigger) return;
+
+      map.invalidateSize();
+
+      if (selectedUserId) {
+        const user = displayUsers.find(u => u.user_id === selectedUserId);
+        if (user && user.lat && user.lng) {
+          map.panTo([user.lat, user.lng], { animate: true, duration: 0.8 });
+          const marker = markersRef.current[user.user_id];
+          if (marker) {
+            marker.openPopup();
+          }
+        }
+      } else {
+        const bounds = L.latLngBounds([]);
+        displayUsers.forEach(u => {
+          if (u.lat && u.lng) bounds.extend([u.lat, u.lng]);
+          if (u.client_lat && u.client_lng) bounds.extend([u.client_lat, u.client_lng]);
+        });
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+        }
+      }
+    }, [refreshTrigger]);
 
   return (
     <div

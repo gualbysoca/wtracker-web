@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Save } from 'lucide-react';
+import { Save, MapPin, Trophy } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import L from 'leaflet';
@@ -100,111 +100,12 @@ export const SettingsPage = () => {
 
 
   return (
-    <div className="page-container" style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto', overflowY: 'auto' }}>
-      <div className="page-header" style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.75rem', fontWeight: 600, color: 'white' }}>Configuraciones</h1>
-        <p style={{ color: 'var(--text-muted)' }}>Ajusta los parámetros del sistema y la app móvil</p>
-      </div>
-
-      {/* GEOFENCE */}
-      <div className="card" style={{ marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', color: 'white' }}>Geofence y Tolerancia</h2>
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>
-            Radio de tolerancia: <strong>{settings.geofence_radius} metros</strong>
-          </label>
-          <input
-            type="range"
-            name="geofence_radius"
-            min="10"
-            max="1000"
-            step="10"
-            value={settings.geofence_radius || 100}
-            onChange={handleChange}
-            style={{ width: '100%', marginBottom: '1rem', cursor: 'pointer' }}
-          />
-          <small style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '1rem' }}>
-            Desliza para ajustar la distancia máxima permitida para registrar una tarea como válida. El círculo azul representa esta área de tolerancia.
-          </small>
-          
-          <div style={{ height: '300px', width: '100%', borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-            <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
-          </div>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="page-header" style={{ marginBottom: '1.25rem', flexShrink: 0 }}>
+        <div className="page-header-left">
+          <h1>Configuraciones</h1>
+          <p>Ajusta los parámetros del sistema y la app móvil</p>
         </div>
-      </div>
-
-      {/* GAMIFICATION */}
-      <div className="card" style={{ marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '1.25rem', margin: 0, color: 'white' }}>Gamificación</h2>
-          <ToggleSwitch
-            id="gamification-enabled-toggle"
-            name="gamification_enabled"
-            checked={settings.gamification_enabled === 'true'}
-            onChange={handleChange}
-          />
-        </div>
-
-        <div style={{ opacity: settings.gamification_enabled === 'true' ? 1 : 0.5, pointerEvents: settings.gamification_enabled === 'true' ? 'auto' : 'none', transition: '0.3s' }}>
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Francotirador (100% de éxito)</label>
-            <input
-              type="number"
-              name="gamification_sniper"
-              value={settings.gamification_sniper || ''}
-              onChange={handleChange}
-              style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', background: 'var(--surface-hover)', color: 'white' }}
-            />
-            <small style={{ color: 'var(--text-muted)' }}>Número mínimo de tareas sin fallos para recibir la medalla Francotirador.</small>
-          </div>
-
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Empleado en Llamas</label>
-            <input
-              type="number"
-              name="gamification_on_fire"
-              value={settings.gamification_on_fire || ''}
-              onChange={handleChange}
-              style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', background: 'var(--surface-hover)', color: 'white' }}
-            />
-            <small style={{ color: 'var(--text-muted)' }}>Número de tareas exitosas consecutivas (racha) requeridas para este premio.</small>
-          </div>
-
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Nube Negra</label>
-            <input
-              type="number"
-              name="gamification_black_cloud"
-              value={settings.gamification_black_cloud || ''}
-              onChange={handleChange}
-              style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', background: 'var(--surface-hover)', color: 'white' }}
-            />
-            <small style={{ color: 'var(--text-muted)' }}>Cantidad de tareas fallidas acumuladas para otorgar la medalla Nube Negra.</small>
-          </div>
-
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Premio a la Tortuga</label>
-            <input
-              type="number"
-              name="gamification_turtle"
-              value={settings.gamification_turtle || ''}
-              onChange={handleChange}
-              style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', background: 'var(--surface-hover)', color: 'white' }}
-            />
-            <small style={{ color: 'var(--text-muted)' }}>Minutos de inactividad acumulada para recibir el premio a la lentitud.</small>
-          </div>
-        </div>
-      </div>
-
-      <EvidenceStorageSettingsCard
-        settings={settings}
-        onChange={handleChange}
-        usage={evidenceStorageUsage.usage}
-        isUsageLoading={evidenceStorageUsage.isLoading}
-        usageErrorMessage={evidenceStorageUsage.errorMessage}
-      />
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: '2rem' }}>
         <button
           className="btn btn-primary"
           onClick={handleSave}
@@ -213,6 +114,141 @@ export const SettingsPage = () => {
           <Save size={18} />
           {loading ? 'Guardando...' : 'Guardar Cambios'}
         </button>
+      </div>
+
+      {/* Contenedor estándar con scroll interno, como en las otras secciones */}
+      <div className="card settings-container" style={{ padding: 0, border: 'none' }}>
+        <div className="settings-scroll-body">
+          <div style={{ maxWidth: '840px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* GEOFENCE */}
+            <div className="card settings-card">
+              <div className="settings-card-header">
+                <MapPin size={20} aria-hidden="true" />
+                <div>
+                  <h2 className="settings-card-title">Geofence y Tolerancia</h2>
+                  <p className="form-hint">Ajusta el radio de cobertura geográfica para la validación automática de tareas en campo.</p>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Radio de tolerancia: <strong style={{ color: 'var(--color-primary-400)' }}>{settings.geofence_radius} metros</strong>
+                </label>
+                <input
+                  type="range"
+                  name="geofence_radius"
+                  min="10"
+                  max="1000"
+                  step="10"
+                  value={settings.geofence_radius || 100}
+                  onChange={handleChange}
+                  style={{ width: '100%', marginBottom: '1rem', cursor: 'pointer', accentColor: 'var(--color-primary-500)' }}
+                />
+                <small className="form-hint" style={{ display: 'block', marginBottom: '1rem' }}>
+                  Desliza para ajustar la distancia máxima permitida para registrar una tarea como válida. El círculo azul representa esta área de tolerancia.
+                </small>
+                
+                <div style={{ height: '300px', width: '100%', borderRadius: 'var(--radius-lg)', overflow: 'hidden', border: '1px solid var(--surface-border)' }}>
+                  <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
+                </div>
+              </div>
+            </div>
+
+            {/* GAMIFICATION */}
+            <div className="card settings-card">
+              <div className="settings-card-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                  <Trophy size={20} aria-hidden="true" />
+                  <div>
+                    <h2 className="settings-card-title">Gamificación</h2>
+                    <p className="form-hint">Incentivos y métricas de desempeño para el personal en terreno.</p>
+                  </div>
+                </div>
+                <ToggleSwitch
+                  id="gamification-enabled-toggle"
+                  name="gamification_enabled"
+                  checked={settings.gamification_enabled === 'true'}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div style={{ opacity: settings.gamification_enabled === 'true' ? 1 : 0.5, pointerEvents: settings.gamification_enabled === 'true' ? 'auto' : 'none', transition: 'opacity 0.25s ease' }}>
+                <div className="settings-field-grid">
+                  <div className="form-group settings-field">
+                    <label className="form-label">Francotirador (100% de éxito)</label>
+                    <input
+                      type="number"
+                      name="gamification_sniper"
+                      className="form-input"
+                      value={settings.gamification_sniper || ''}
+                      onChange={handleChange}
+                      placeholder="Ej. 10"
+                    />
+                    <small className="form-hint">Mínimo de tareas sin fallos para recibir la medalla.</small>
+                  </div>
+
+                  <div className="form-group settings-field">
+                    <label className="form-label">Empleado en Llamas</label>
+                    <input
+                      type="number"
+                      name="gamification_on_fire"
+                      className="form-input"
+                      value={settings.gamification_on_fire || ''}
+                      onChange={handleChange}
+                      placeholder="Ej. 5"
+                    />
+                    <small className="form-hint">Tareas exitosas consecutivas requeridas para este premio.</small>
+                  </div>
+
+                  <div className="form-group settings-field">
+                    <label className="form-label">Nube Negra</label>
+                    <input
+                      type="number"
+                      name="gamification_black_cloud"
+                      className="form-input"
+                      value={settings.gamification_black_cloud || ''}
+                      onChange={handleChange}
+                      placeholder="Ej. 3"
+                    />
+                    <small className="form-hint">Cantidad de tareas fallidas acumuladas para la medalla.</small>
+                  </div>
+
+                  <div className="form-group settings-field">
+                    <label className="form-label">Premio a la Tortuga</label>
+                    <input
+                      type="number"
+                      name="gamification_turtle"
+                      className="form-input"
+                      value={settings.gamification_turtle || ''}
+                      onChange={handleChange}
+                      placeholder="Ej. 30"
+                    />
+                    <small className="form-hint">Minutos de inactividad acumulada para recibir el premio.</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <EvidenceStorageSettingsCard
+              settings={settings}
+              onChange={handleChange}
+              usage={evidenceStorageUsage.usage}
+              isUsageLoading={evidenceStorageUsage.isLoading}
+              usageErrorMessage={evidenceStorageUsage.errorMessage}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: '1rem' }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleSave}
+                disabled={loading}
+              >
+                <Save size={18} />
+                {loading ? 'Guardando...' : 'Guardar Cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

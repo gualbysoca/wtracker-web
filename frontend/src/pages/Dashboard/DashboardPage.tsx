@@ -56,37 +56,44 @@ const ActivityRow = ({ user }: { user: LiveMapUser }) => {
 
   return (
     <tr>
-      <td style={{ padding: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
-          <div className="avatar" style={{ width: 44, height: 44, fontSize: '1rem', flexShrink: 0 }}>
+      <td style={{ padding: '0.65rem 0.85rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div className="avatar" style={{ width: 36, height: 36, fontSize: '0.85rem', flexShrink: 0 }}>
             {user.full_name.split(' ').slice(0, 2).map((n) => n[0]).join('')}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <div style={{ fontWeight: 500, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{user.full_name}</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{user.role}</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+            <div style={{ fontWeight: 500, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {user.full_name}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+              {user.role}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               📍 {user.client_name || 'Sin cliente asignado'}
             </div>
           </div>
         </div>
       </td>
-      <td style={{ verticalAlign: 'middle', padding: '1rem' }}>
+      <td style={{ verticalAlign: 'middle', padding: '0.65rem 0.85rem' }}>
         <span style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: '6px',
-          padding: '4px 12px',
+          gap: '5px',
+          padding: '3px 8px',
           borderRadius: '20px',
-          fontSize: '0.75rem',
+          fontSize: '0.72rem',
           fontWeight: 600,
+          whiteSpace: 'nowrap',
           backgroundColor: s.bg,
           color: s.color
         }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'currentColor' }} />
+          <span style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: 'currentColor' }} />
           {s.label.charAt(0).toUpperCase() + s.label.slice(1)}
         </span>
       </td>
-      <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)', verticalAlign: 'middle', padding: '1rem' }}>{timeAgo}</td>
+      <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)', verticalAlign: 'middle', padding: '0.65rem 0.85rem', whiteSpace: 'nowrap' }}>
+        {timeAgo}
+      </td>
     </tr>
   );
 };
@@ -119,8 +126,8 @@ export const DashboardPage = () => {
   }, []);
 
   return (
-    <div className="dashboard-page" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <div className="page-header">
+    <div className="dashboard-page" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <div className="page-header" style={{ flexShrink: 0 }}>
         <div className="page-header-left">
           <h1>Dashboard</h1>
           <p>Resumen de actividad del día · {formatDate(new Date(), 'long')}</p>
@@ -129,7 +136,7 @@ export const DashboardPage = () => {
       </div>
 
       {/* KPI Cards */}
-      <div className="stats-grid">
+      <div className="stats-grid" style={{ flexShrink: 0 }}>
         <StatCard icon={ClipboardList}     value={loading ? <Skeleton width="60px" height="2rem" /> : stats?.visits_today || 0}       label="Tareas Hoy"          variant="primary" tooltip="Total de tareas registradas el día de hoy" />
         <StatCard icon={CheckCircle2} value={loading ? <Skeleton width="60px" height="2rem" /> : stats?.visited_today || 0}       label="Completadas"          variant="success" tooltip="Tareas finalizadas exitosamente hoy" />
         <StatCard icon={XCircle}      value={loading ? <Skeleton width="60px" height="2rem" /> : stats?.failed_today || 0}        label="Fallidas"             variant="danger"  tooltip="Tareas que no pudieron concretarse hoy" />
@@ -141,21 +148,21 @@ export const DashboardPage = () => {
       <div className="dashboard-grid" style={{ flex: 1, minHeight: 0 }}>
         {/* Live Map */}
         <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div className="card-header" style={{ padding: '1.25rem 1.5rem 0' }}>
+          <div className="card-header" style={{ padding: '0.85rem 1.25rem 0' }}>
             <div>
               <div className="card-title">Monitoreo en Tiempo Real</div>
               <div className="card-subtitle">{liveUsers.length} usuarios activos en campo</div>
             </div>
             <div className="live-dot">LIVE</div>
           </div>
-          <div style={{ flex: 1, minHeight: 0, marginTop: '1rem' }}>
+          <div style={{ flex: 1, minHeight: '340px', marginTop: '0.5rem' }}>
             <LiveMap users={liveUsers} height="100%" />
           </div>
         </div>
 
         {/* Activity Feed */}
         <div className="card" style={{ padding: 0, overflow: 'visible', display: 'flex', flexDirection: 'column' }}>
-          <div className="card-header" style={{ padding: '1.25rem 1.5rem 0' }}>
+          <div className="card-header" style={{ padding: '0.85rem 1.25rem 0' }}>
             <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               Actividad Reciente
               <span className="tooltip-container" style={{ display: 'flex' }}>
@@ -168,27 +175,26 @@ export const DashboardPage = () => {
             <table className="table">
               <thead>
                 <tr>
-                  <th style={{ padding: '0.75rem 1rem', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>PERSONAL</th>
-                  <th style={{ padding: '0.75rem 1rem', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>ESTADO</th>
-                  <th style={{ padding: '0.75rem 1rem', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>HORA</th>
+                  <th style={{ padding: '0.5rem 0.85rem', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>PERSONAL</th>
+                  <th style={{ padding: '0.5rem 0.85rem', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>ESTADO</th>
+                  <th style={{ padding: '0.5rem 0.85rem', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>HORA</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   Array.from({ length: 4 }).map((_, i) => (
                     <tr key={i}>
-                      <td style={{ padding: '1rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
-                          <Skeleton width="44px" height="44px" borderRadius="var(--radius-full)" />
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
-                            <Skeleton width="120px" height="0.9rem" />
-                            <Skeleton width="80px" height="0.75rem" />
-                            <Skeleton width="150px" height="0.75rem" />
+                      <td style={{ padding: '0.65rem 0.85rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <Skeleton width="36px" height="36px" borderRadius="var(--radius-full)" />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                            <Skeleton width="120px" height="0.85rem" />
+                            <Skeleton width="80px" height="0.7rem" />
                           </div>
                         </div>
                       </td>
-                      <td style={{ padding: '1rem' }}><Skeleton width="80px" height="1.5rem" borderRadius="20px" /></td>
-                      <td style={{ padding: '1rem' }}><Skeleton width="50px" height="0.85rem" /></td>
+                      <td style={{ padding: '0.65rem 0.85rem' }}><Skeleton width="70px" height="1.25rem" borderRadius="20px" /></td>
+                      <td style={{ padding: '0.65rem 0.85rem' }}><Skeleton width="45px" height="0.8rem" /></td>
                     </tr>
                   ))
                 ) : (() => {

@@ -176,8 +176,8 @@ export const UsersPage = () => {
   };
 
   return (
-    <div>
-      <div className="page-header">
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="page-header" style={{ flexShrink: 0 }}>
         <div className="page-header-left">
           <h1>Gestión de Usuarios</h1>
           <p>Administra perfiles del sistema y personal móvil en terreno</p>
@@ -189,7 +189,7 @@ export const UsersPage = () => {
       </div>
 
       {/* Tabs */}
-      <div className="tab-group" style={{ display: 'flex', borderBottom: '1px solid var(--surface-border)', marginBottom: '1.5rem', padding: '0 1rem' }}>
+      <div className="tab-group" style={{ display: 'flex', borderBottom: '1px solid var(--surface-border)', marginBottom: '1rem', padding: '0 1rem', flexShrink: 0 }}>
         {currentUser?.role !== 'supervisor' && (
           <button
             type="button"
@@ -213,7 +213,7 @@ export const UsersPage = () => {
       </div>
 
       {/* Filters */}
-      <div className="card" style={{ marginBottom: '1.5rem', padding: '1rem 1.5rem' }}>
+      <div className="card" style={{ marginBottom: '1rem', padding: '0.85rem 1.25rem', flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <div className="search-bar" style={{ flex: 1, minWidth: '200px' }}>
             <Search size={16} className="search-bar-icon" />
@@ -238,7 +238,7 @@ export const UsersPage = () => {
       </div>
 
       {/* Table */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 300px)' }}>
+      <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <div className="table-wrapper" style={{ border: 'none', flex: 1, overflowY: 'auto' }}>
           <table className="table" id="users-table">
             <thead>

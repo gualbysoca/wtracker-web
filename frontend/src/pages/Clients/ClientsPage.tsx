@@ -19,6 +19,10 @@ import api from '../../services/api';
 import { BulkClientsModal } from './components/BulkClientsModal';
 import { buildClientsExportCsv } from './clientCsv';
 import { downloadCsvFile } from '../../utils/csv';
+import { PaginationBar } from '../../components/ui/PaginationBar';
+
+const CLIENTS_PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 350;
 
 // Fix icon paths for leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -163,6 +167,9 @@ export const ClientsPage = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalClients, setTotalClients] = useState(0);
   
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [detailVisible, setDetailVisible]   = useState(false);
@@ -234,12 +241,22 @@ export const ClientsPage = () => {
   const detailMarkerInst = useRef<L.Marker | null>(null);
 
   // ── Cargar clientes desde la API ──────────────────────────
-  const loadClients = async () => {
+  const loadClients = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await clientService.list({ limit: 200 });
+      const response = await clientService.list({
+        page,
+        limit: CLIENTS_PAGE_SIZE,
+        search: debouncedSearch.trim() || undefined,
+      });
       // La API devuelve { success, data: Client[], pagination }
       const items: Client[] = Array.isArray(response) ? response : (response as any).data ?? [];
+      const total = response.pagination?.total ?? items.length;
+      // Si la página quedó vacía (ej. tras eliminar el último registro), retroceder una página
+      if (items.length === 0 && page > 1) {
+        setPage(page - 1);
+        return;
+      }
       // Normalizar lat/lng a number (PostgreSQL devuelve numeric como string)
       const normalized = items.map((c: any) => ({
         ...c,
@@ -247,14 +264,24 @@ export const ClientsPage = () => {
         lng: typeof c.lng === 'string' ? parseFloat(c.lng) : c.lng,
       }));
       setClients(normalized);
+      setTotalClients(total);
     } catch (err) {
       console.error('[wtracker] Error cargando clientes:', err);
+      toast.error('Error al cargar los clientes');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [page, debouncedSearch]);
 
-  useEffect(() => { loadClients(); }, []);
+  useEffect(() => { loadClients(); }, [loadClients]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const fetchClientTasks = useCallback(async () => {
     if (!selectedClient || detailsTab !== 'tareas') return;
@@ -316,10 +343,8 @@ export const ClientsPage = () => {
     };
   }, [detailsTab, selectedClient]);
 
-  const filtered = clients.filter(c =>
-    c.business_name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.contact_name ?? '').toLowerCase().includes(search.toLowerCase())
-  );
+  // La búsqueda se resuelve en el servidor; la lista ya llega filtrada y paginada
+  const filtered = clients;
 
   const handleOpenCreate = () => {
     setEditingId(null);
@@ -360,8 +385,8 @@ export const ClientsPage = () => {
     setDeletingId(id);
     try {
       await clientService.remove(id);
-      setClients(prev => prev.filter(c => c.id !== id));
       if (selectedClient?.id === id) setSelectedClient(null);
+      await loadClients();
       toast.success('Cliente eliminado');
     } catch (err) {
       console.error('[wtracker] Error eliminando cliente:', err);
@@ -453,8 +478,8 @@ export const ClientsPage = () => {
 
 
   return (
-    <div>
-      <div className="page-header">
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="page-header" style={{ flexShrink: 0 }}>
         <div className="page-header-left">
           <h1>Directorio de Clientes</h1>
           <p>Directorio master de puntos de venta y clientes</p>
@@ -479,37 +504,45 @@ export const ClientsPage = () => {
       <div style={{
         display: 'grid',
         gridTemplateColumns: selectedTask ? '60px 1.375fr 1fr' : selectedClient ? '1fr 1fr' : '1fr',
-        gap: '1.5rem',
-        alignItems: 'start',
+        gap: '1rem',
+        alignItems: 'stretch',
+        flex: 1,
+        minHeight: 0,
         transition: 'grid-template-columns 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
         
 
         {/* LEFT: Search + Table */}
-        <div style={{ position: 'relative', height: 'calc(100vh - 140px)', minWidth: 0 }}>
+        <div style={{ position: 'relative', height: '100%', minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           
           {/* Expanded State Content */}
           <div style={{
-            display: 'flex', flexDirection: 'column', gap: '1.5rem', height: '100%',
+            display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%', flex: 1, minHeight: 0,
             opacity: listCollapsed ? 0 : 1,
             pointerEvents: listCollapsed ? 'none' : 'auto',
             transition: 'opacity 0.25s ease',
             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0
           }}>
-            <div className="card" style={{ padding: '1rem 1.5rem', flexShrink: 0 }}>
-              <div className="search-bar">
-                <Search size={16} className="search-bar-icon" />
-                <input
-                  id="clients-search"
-                  type="text"
-                  className="form-input"
-                  placeholder="Buscar por nombre de mercado o contacto..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
+            <div className="card" style={{ padding: '0.85rem 1.25rem', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                <div className="search-bar" style={{ flex: 1, minWidth: '220px' }}>
+                  <Search size={16} className="search-bar-icon" />
+                  <input
+                    id="clients-search"
+                    type="text"
+                    className="form-input"
+                    placeholder="Buscar por nombre de mercado o contacto..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <span id="clients-total-counter" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                  <strong style={{ color: 'var(--text-primary)', fontSize: '1rem' }}>{totalClients.toLocaleString('es-BO')}</strong>{' '}
+                  {debouncedSearch.trim() ? (totalClients === 1 ? 'resultado' : 'resultados') : (totalClients === 1 ? 'cliente registrado' : 'clientes registrados')}
+                </span>
               </div>
             </div>
-          <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <div className="table-wrapper" style={{ border: 'none', flex: 1, overflowY: 'auto' }}>
               <table className="table">
                 <thead>
@@ -627,6 +660,14 @@ export const ClientsPage = () => {
                 </tbody>
               </table>
             </div>
+            <PaginationBar
+              page={page}
+              pageSize={CLIENTS_PAGE_SIZE}
+              total={totalClients}
+              itemLabel="clientes"
+              disabled={isLoading}
+              onPageChange={setPage}
+            />
           </div>
         </div>
 
@@ -656,9 +697,9 @@ export const ClientsPage = () => {
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              height: 'calc(100vh - 140px)',
-              position: 'sticky',
-              top: '1.5rem',
+              height: '100%',
+              minHeight: 0,
+              position: 'relative',
               opacity: detailVisible ? 1 : 0,
               transform: detailVisible ? 'translateX(0)' : 'translateX(24px)',
               transition: 'opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1), transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -886,7 +927,7 @@ export const ClientsPage = () => {
             </button>
           </div>
           
-          <div style={{ padding: '0 1.5rem 1.5rem', flex: 1, overflowY: 'auto' }}>
+          <div style={{ padding: '0 1.5rem 1.5rem', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
             {taskDetailTab === 'info' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)', alignItems: 'flex-start' }}>
@@ -947,9 +988,9 @@ export const ClientsPage = () => {
             )}
             
             {taskDetailTab === 'evidence' && (
-              <div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 {selectedTask.evidences && selectedTask.evidences.length > 0 ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, minHeight: 0 }}>
                     {selectedTask.evidences.map((ev) => {
                       const evLat = ev.lat;
                       const evLng = ev.lng;
@@ -962,26 +1003,41 @@ export const ClientsPage = () => {
                       const isValid = dist !== null && dist <= maxDist;
 
                       return (
-                        <div key={ev.id} style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--surface-border)', position: 'relative' }}>
+                        <div 
+                          key={ev.id} 
+                          style={{ 
+                            borderRadius: 'var(--radius-md)', 
+                            overflow: 'hidden', 
+                            border: '1px solid var(--surface-border)', 
+                            position: 'relative',
+                            width: '100%',
+                            flex: selectedTask.evidences!.length === 1 ? 1 : 'none',
+                            minHeight: '280px',
+                            height: selectedTask.evidences!.length === 1 ? '100%' : '320px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            backgroundColor: 'var(--surface-ground)'
+                          }}
+                        >
                           <img 
                             src={getMediaUrl(ev.file_url)} 
                             alt="Evidencia" 
-                            style={{ width: '100%', height: '180px', objectFit: 'cover', display: 'block', cursor: 'pointer' }} 
+                            style={{ width: '100%', height: '100%', flex: 1, objectFit: 'cover', display: 'block', cursor: 'pointer' }} 
                             onClick={() => setFullScreenImage(getMediaUrl(ev.file_url))}
                           />
                           
-                          <div style={{ position: 'absolute', top: 8, right: 8, background: isValid ? 'rgba(16, 185, 129, 0.9)' : 'rgba(239, 68, 68, 0.9)', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)' }}>
-                            <MapPin size={12} />
+                          <div style={{ position: 'absolute', top: 10, right: 10, background: isValid ? 'rgba(16, 185, 129, 0.92)' : 'rgba(239, 68, 68, 0.92)', color: 'white', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px', boxShadow: '0 2px 6px rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}>
+                            <MapPin size={13} />
                             {isValid ? `Válido (<${maxDist}m)` : (dist ? `Inválido (${dist.toFixed(0)}m)` : 'Sin GPS')}
                           </div>
 
-                          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '6px 8px', fontSize: '0.65rem', display: 'flex', flexDirection: 'column', gap: '2px', backdropFilter: 'blur(2px)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontFamily: 'monospace', letterSpacing: '-0.5px' }}>
+                          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%)', color: '#fff', padding: '8px 12px', fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: '2px', backdropFilter: 'blur(2px)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                              <span style={{ fontFamily: 'monospace', letterSpacing: '-0.3px', fontWeight: 500 }}>
                                 {ev.lat !== null && ev.lng !== null ? `${ev.lat.toFixed(6)}, ${ev.lng.toFixed(6)}` : 'GPS no disp.'}
                               </span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                <Clock size={10} />
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <Clock size={11} />
                                 <span>{ev.captured_at ? new Date(ev.captured_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
                               </div>
                             </div>

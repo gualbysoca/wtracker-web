@@ -78,8 +78,8 @@ export const EvidencePage = () => {
   const filtered = MOCK_EVIDENCE.filter(e => filter === 'all' || e.type === filter);
 
   return (
-    <div>
-      <div className="page-header">
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="page-header" style={{ flexShrink: 0 }}>
         <div className="page-header-left">
           <h1>Galería de Evidencias</h1>
           <p>Fotografías y firmas digitales capturadas en campo con metadatos validados</p>
@@ -98,7 +98,7 @@ export const EvidencePage = () => {
         </div>
       </div>
 
-      <div className="evidence-grid">
+      <div className="evidence-grid" style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: '0.25rem' }}>
         {filtered.map((item) => (
           <EvidenceCard
             key={item.id}

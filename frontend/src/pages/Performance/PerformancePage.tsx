@@ -247,8 +247,8 @@ export const PerformancePage = () => {
   }, [selectedTaskModal]);
 
   return (
-    <div>
-      <div className="page-header">
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="page-header" style={{ flexShrink: 0 }}>
         <div className="page-header-left">
           <h1>Desempeño</h1>
           <p>Métricas y KPIs del personal móvil en terreno</p>
@@ -256,7 +256,7 @@ export const PerformancePage = () => {
       </div>
 
       {/* Filters */}
-      <div className="card" style={{ marginBottom: '1.5rem', padding: '1rem 1.5rem' }}>
+      <div className="card" style={{ marginBottom: '1rem', padding: '0.85rem 1.25rem', flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <div className="search-bar" style={{ flex: 1, minWidth: '200px' }}>
             <Search size={16} className="search-bar-icon" />
@@ -281,7 +281,9 @@ export const PerformancePage = () => {
             ? '4fr 6fr'
             : '1fr',
           gap: '1rem',
-          alignItems: 'start',
+          alignItems: 'stretch',
+          flex: 1,
+          minHeight: 0,
           transition: 'grid-template-columns 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
@@ -289,7 +291,8 @@ export const PerformancePage = () => {
         <div
           style={{
             minWidth: 0,
-            height: 'calc(100vh - 240px)',
+            height: '100%',
+            minHeight: 0,
           }}
         >
           <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -396,9 +399,9 @@ export const PerformancePage = () => {
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              height: 'calc(100vh - 240px)',
-              position: 'sticky',
-              top: '1.5rem',
+              height: '100%',
+              minHeight: 0,
+              position: 'relative',
               opacity: detailVisible ? 1 : 0,
               transform: detailVisible ? 'translateX(0)' : 'translateX(24px)',
               transition: 'flex 0.45s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1), transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -737,9 +740,9 @@ export const PerformancePage = () => {
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              height: 'calc(100vh - 240px)',
-              position: 'sticky',
-              top: '1.5rem',
+              height: '100%',
+              minHeight: 0,
+              position: 'relative',
               opacity: taskDetailVisible ? 1 : 0,
               transform: taskDetailVisible ? 'translateX(0)' : 'translateX(24px)',
               transition: 'opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1), transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -788,7 +791,7 @@ export const PerformancePage = () => {
             </div>
 
             {/* Body */}
-            <div style={{ padding: '1.25rem 1.5rem', flex: 1, overflowY: 'auto' }}>
+            <div style={{ padding: '1.25rem 1.5rem', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
               {taskDetailTab === 'info' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                   <div style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)', alignItems: 'flex-start' }}>
@@ -845,9 +848,9 @@ export const PerformancePage = () => {
               )}
 
               {taskDetailTab === 'evidence' && (
-                <div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                   {selectedTaskModal.evidences && selectedTaskModal.evidences.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, minHeight: 0 }}>
                       {selectedTaskModal.evidences.map((ev) => {
                         const evLat = ev.lat;
                         const evLng = ev.lng;
@@ -860,26 +863,41 @@ export const PerformancePage = () => {
                         const isValid = dist !== null && dist <= maxDist;
 
                         return (
-                          <div key={ev.id} style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--surface-border)', position: 'relative' }}>
+                          <div 
+                            key={ev.id} 
+                            style={{ 
+                              borderRadius: 'var(--radius-md)', 
+                              overflow: 'hidden', 
+                              border: '1px solid var(--surface-border)', 
+                              position: 'relative',
+                              width: '100%',
+                              flex: selectedTaskModal.evidences!.length === 1 ? 1 : 'none',
+                              minHeight: '280px',
+                              height: selectedTaskModal.evidences!.length === 1 ? '100%' : '320px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              backgroundColor: 'var(--surface-ground)'
+                            }}
+                          >
                             <img 
                               src={getMediaUrl(ev.file_url)} 
                               alt="Evidencia" 
-                              style={{ width: '100%', height: '160px', objectFit: 'cover', display: 'block', cursor: 'pointer' }} 
+                              style={{ width: '100%', height: '100%', flex: 1, objectFit: 'cover', display: 'block', cursor: 'pointer' }} 
                               onClick={() => setFullScreenImage(getMediaUrl(ev.file_url))}
                             />
                             
-                            <div style={{ position: 'absolute', top: 8, right: 8, background: isValid ? 'rgba(16, 185, 129, 0.9)' : 'rgba(239, 68, 68, 0.9)', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)' }}>
-                              <MapPin size={12} />
+                            <div style={{ position: 'absolute', top: 10, right: 10, background: isValid ? 'rgba(16, 185, 129, 0.92)' : 'rgba(239, 68, 68, 0.92)', color: 'white', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px', boxShadow: '0 2px 6px rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}>
+                              <MapPin size={13} />
                               {isValid ? `Válido (<${maxDist}m)` : (dist ? `Inválido (${dist.toFixed(0)}m)` : 'Sin GPS')}
                             </div>
 
-                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '6px 8px', fontSize: '0.65rem', display: 'flex', flexDirection: 'column', gap: '2px', backdropFilter: 'blur(2px)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontFamily: 'monospace', letterSpacing: '-0.5px' }}>
+                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%)', color: '#fff', padding: '8px 12px', fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: '2px', backdropFilter: 'blur(2px)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                <span style={{ fontFamily: 'monospace', letterSpacing: '-0.3px', fontWeight: 500 }}>
                                   {ev.lat !== null && ev.lng !== null ? `${ev.lat.toFixed(6)}, ${ev.lng.toFixed(6)}` : 'GPS no disp.'}
                                 </span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                  <Clock size={10} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <Clock size={11} />
                                   <span>{ev.captured_at ? new Date(ev.captured_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
                                 </div>
                               </div>

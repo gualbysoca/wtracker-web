@@ -43,8 +43,8 @@ export const CrossDataPage = () => {
   const neither     = rows.filter(r => !r.sellers?.length && !r.replenishers?.length).length;
 
   return (
-    <div>
-      <div className="page-header">
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="page-header" style={{ flexShrink: 0 }}>
         <div className="page-header-left">
           <h1>Cruce de Información</h1>
           <p>Auditoría de tareas: Vendedores vs. Reponedores por cliente</p>
@@ -52,7 +52,7 @@ export const CrossDataPage = () => {
       </div>
 
       {/* Summary KPIs */}
-      <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
+      <div className="stats-grid" style={{ marginBottom: '1.5rem', flexShrink: 0 }}>
         <div className="stat-card success">
           <div className="stat-icon-wrapper success"><GitCompare size={20} /></div>
           <div><div className="stat-value">{bothPresent}</div><div className="stat-label">Ambos registraron tarea</div></div>
@@ -72,8 +72,8 @@ export const CrossDataPage = () => {
       </div>
 
       {/* Cross Matrix Table */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-wrapper" style={{ border: 'none' }}>
+      <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <div className="table-wrapper" style={{ border: 'none', flex: 1, overflowY: 'auto' }}>
           <table className="table cross-table" id="cross-data-table">
             <thead>
               <tr>

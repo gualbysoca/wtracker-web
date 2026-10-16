@@ -20,9 +20,20 @@ const countByAction = (rows: BulkClientRow[]) => ({
   delete: rows.filter((row) => row.action === 'delete').length,
 });
 
-const getErrorMessage = (error: unknown): string =>
-  (error as { response?: { data?: { message?: string } } })?.response?.data?.message
-  ?? 'Error al procesar el archivo. Intente de nuevo.';
+interface UploadErrorShape {
+  code?: string;
+  message?: string;
+  response?: { status?: number; data?: { message?: string } };
+}
+
+const getErrorMessage = (error: unknown): string => {
+  const { code, message, response } = (error ?? {}) as UploadErrorShape;
+  if (response?.data?.message) return response.data.message;
+  if (response?.status) return `El servidor respondió con error ${response.status}. Intente de nuevo.`;
+  if (code === 'ECONNABORTED') return 'El servidor tardó demasiado en responder. Revise si la carga se aplicó parcialmente.';
+  if (code === 'ERR_NETWORK') return 'No se pudo conectar con el servidor. Verifique que el backend esté en ejecución.';
+  return message ? `Error al procesar el archivo: ${message}` : 'Error al procesar el archivo. Intente de nuevo.';
+};
 
 export const BulkClientsModal = ({ onClose, onCompleted }: BulkClientsModalProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);

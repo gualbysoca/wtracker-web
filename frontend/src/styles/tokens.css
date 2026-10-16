@@ -46,12 +46,15 @@
   --color-neutral-900: hsl(220, 18%, 8%);
 
   /* Dark Surfaces */
-  --surface-app:     hsl(222, 20%, 10%);
-  --surface-panel:   hsl(222, 18%, 14%);
-  --surface-card:    hsl(222, 16%, 18%);
-  --surface-hover:   hsl(222, 14%, 22%);
-  --surface-border:  hsl(222, 12%, 26%);
-  --surface-border-subtle: hsl(222, 10%, 22%);
+  --surface-app:            hsl(222, 20%, 10%);
+  --surface-panel:          hsl(222, 18%, 14%);
+  --surface-card:           hsl(222, 16%, 18%);
+  --surface-hover:          hsl(222, 14%, 22%);
+  --surface-card-elevated:  hsl(222, 15%, 22%);
+  --surface-container-deep: hsl(222, 24%, 9.5%);
+  --surface-border:         hsl(222, 12%, 26%);
+  --surface-border-subtle:  hsl(222, 10%, 20%);
+  --surface-border-strong:  hsl(222, 14%, 32%);
 
   /* Text */
   --text-primary:   hsl(220, 20%, 96%);
@@ -114,6 +117,13 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--surface-app);
@@ -121,7 +131,6 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
 }
 
 img, video {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Search, Filter, X, ChevronLeft, ChevronRight, HelpCircle, ClipboardList, User as UserIcon, Calendar, FileImage, Clock, Timer, Navigation, MapPin, RefreshCw } from 'lucide-react';
 import { LiveMap } from '../../components/maps/LiveMap';
 import { dashboardService } from '../../services/dashboard.service';
@@ -8,6 +8,7 @@ import type { LiveMapUser, Visit } from '../../types';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ImageModal } from '../../components/ui/ImageModal';
 import api from '../../services/api';
+import toast from 'react-hot-toast';
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string; color: string }> = {
   en_ruta:       { label: 'En Ruta',       cls: 'badge-warning', color: '#f59e0b' },
@@ -113,6 +114,9 @@ export const MonitoringPage = () => {
   const [nameFilter, setNameFilter] = useState<string>('');
 
   const [refreshing, setRefreshing]   = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const sseRef = useRef<EventSource | null>(null);
+  const connectSSERef = useRef<(() => void) | null>(null);
 
   const fetchUserTasks = useCallback(async (userId: string) => {
     setLoadingTasks(true);
@@ -127,7 +131,15 @@ export const MonitoringPage = () => {
         date_from: today.toISOString(),
         date_to: tomorrow.toISOString(),
       });
-      setUserTasks(res.data || []);
+      const tasks = res.data || [];
+      setUserTasks(tasks);
+
+      // Sincronizar también la tarea abierta en el modal si coincide
+      setSelectedTaskModal((prevTask) => {
+        if (!prevTask) return null;
+        const freshTask = tasks.find((t: Visit) => t.id === prevTask.id);
+        return freshTask || prevTask;
+      });
     } catch (err) {
       console.error('[Monitoring] Error fetching user tasks:', err);
       setUserTasks([]);
@@ -136,44 +148,69 @@ export const MonitoringPage = () => {
     }
   }, []);
 
-  const fetchLiveData = async () => {
+  const refreshAll = useCallback(async (isManual = false) => {
     setRefreshing(true);
     try {
-      const data = await dashboardService.getLiveMap();
-      const normalized = (data || []).map((u: any) => ({
+      // 1. Refrescar datos en vivo del mapa y configuraciones en paralelo
+      const [mapData, settingsRes] = await Promise.all([
+        dashboardService.getLiveMap(),
+        api.get('/settings').catch(() => null),
+      ]);
+
+      if (settingsRes?.data?.data?.geofence_radius) {
+        setGlobalGeofenceRadius(Number(settingsRes.data.data.geofence_radius));
+      }
+
+      const normalized: LiveMapUser[] = (mapData || []).map((u: any) => ({
         ...u,
         lat: typeof u.lat === 'string' ? parseFloat(u.lat) : u.lat,
         lng: typeof u.lng === 'string' ? parseFloat(u.lng) : u.lng,
       }));
       setLiveUsers(normalized);
-      
-      // Forzar recarga de las tareas del usuario activo si existe
-      setSelected((currentSelected) => {
-        if (currentSelected) {
-          fetchUserTasks(currentSelected);
+
+      // 2. Si hay un usuario activo, sincronizarlo y recargar sus tareas del día
+      if (selected) {
+        const updatedUser = normalized.find(u => u.user_id === selected);
+        if (updatedUser) {
+          setSelectedUser(updatedUser);
         }
-        return currentSelected;
-      });
+        await fetchUserTasks(selected);
+      }
+
+      // 3. Forzar actualización de la cámara y marcadores en el mapa Leaflet
+      setRefreshTrigger((prev) => prev + 1);
+
+      // 4. Reconectar SSE si se encontraba desconectado o cerrado
+      if (sseRef.current && sseRef.current.readyState === EventSource.CLOSED) {
+        connectSSERef.current?.();
+      }
+
+      if (isManual) {
+        toast.success('Monitoreo actualizado', { id: 'monitoring-refresh-toast' });
+      }
     } catch (err) {
-      console.error('[Monitoring] Error fetching live map data:', err);
+      console.error('[Monitoring] Error al actualizar monitoreo:', err);
+      if (isManual) {
+        toast.error('Error al actualizar el monitoreo');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [selected, fetchUserTasks]);
 
   useEffect(() => {
-    fetchLiveData();
+    refreshAll(false);
     
-    let sse: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout>;
 
     const connectSSE = () => {
       const token = localStorage.getItem('wt_access_token') || '';
       const sseUrl = `${import.meta.env.VITE_API_URL || '/api/v1'}/dashboard/map/stream?token=${token}`;
       
-      if (sse) sse.close();
-      sse = new EventSource(sseUrl);
+      if (sseRef.current) sseRef.current.close();
+      const sse = new EventSource(sseUrl);
+      sseRef.current = sse;
 
       sse.onmessage = (event) => {
         try {
@@ -191,9 +228,10 @@ export const MonitoringPage = () => {
 
       sse.onerror = (err) => {
         console.error('[Monitoring] SSE connection error', err);
-        // On 401 token expiration, the connection will keep failing.
-        // Close it, trigger an api call to force token refresh via interceptor, then reconnect.
-        if (sse) sse.close();
+        if (sseRef.current) {
+          sseRef.current.close();
+          sseRef.current = null;
+        }
         
         api.get('/settings')
           .then(() => {
@@ -205,13 +243,16 @@ export const MonitoringPage = () => {
       };
     };
 
+    connectSSERef.current = connectSSE;
     connectSSE();
 
     return () => {
-      if (sse) sse.close();
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+      }
       clearTimeout(reconnectTimer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Mantener sincronizado el selectedUser con la información en vivo (desde SSE o fetchLiveData)
@@ -308,17 +349,21 @@ export const MonitoringPage = () => {
   // Compute grid columns: Personnel | [Detail] | [Task] | Map
   const gridCols = (() => {
     if (selectedUser && selectedTaskModal) {
-      return listCollapsed ? '60px 250px 1.8fr 0.2fr' : '1fr 1fr 1.8fr 0.2fr';
+      return listCollapsed
+        ? '60px 300px minmax(320px, 1.4fr) minmax(180px, 0.7fr)'
+        : 'minmax(240px, 270px) 300px minmax(300px, 1.4fr) minmax(150px, 0.7fr)';
     }
     if (selectedUser) {
-      return listCollapsed ? '60px 300px 1fr' : '1fr 1fr 2fr';
+      return listCollapsed
+        ? '60px minmax(330px, 370px) 1fr'
+        : 'minmax(260px, 290px) minmax(330px, 370px) 1fr';
     }
-    return listCollapsed ? '60px 1fr' : '1fr 3fr';
+    return listCollapsed ? '60px 1fr' : 'minmax(280px, 340px) 1fr';
   })();
 
   return (
-    <div>
-      <div className="page-header">
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="page-header" style={{ flexShrink: 0 }}>
         <div className="page-header-left">
           <h1>Monitoreo en Tiempo Real</h1>
           <p>Supervisión en vivo de los usuarios móviles</p>
@@ -326,13 +371,13 @@ export const MonitoringPage = () => {
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           <button 
             className="btn btn-secondary btn-sm"
-            onClick={fetchLiveData}
+            onClick={() => refreshAll(true)}
             disabled={refreshing}
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
-            title="Actualizar datos del mapa"
+            title="Actualizar toda la sección de monitoreo"
           >
             <RefreshCw size={16} className={refreshing ? 'spin' : ''} />
-            Actualizar
+            {refreshing ? 'Actualizando...' : 'Actualizar'}
           </button>
           <div className="live-dot">EN VIVO</div>
         </div>
@@ -344,15 +389,17 @@ export const MonitoringPage = () => {
           display: 'grid',
           gridTemplateColumns: gridCols,
           gap: '1rem',
-          alignItems: 'start',
+          alignItems: 'stretch',
+          flex: 1,
+          minHeight: 0,
           transition: 'grid-template-columns 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
 
         {/* PANEL IZQUIERDO: Personal en Campo */}
-        <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)' }}>
+        <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
           <div style={{ 
-            padding: listCollapsed ? 0 : '1.25rem 1.25rem 0.75rem', 
+            padding: listCollapsed ? 0 : '1rem 1.25rem 0.65rem', 
             borderBottom: listCollapsed ? 'none' : '1px solid var(--surface-border)', 
             display: 'flex', 
             alignItems: 'center', 
@@ -363,7 +410,7 @@ export const MonitoringPage = () => {
             {!listCollapsed && (
               <div>
                 <div className="card-title">Personal en Campo</div>
-                <div className="card-subtitle">{filteredUsers.length} de {liveUsers.length} activos</div>
+                <div className="card-subtitle">{refreshing ? 'Actualizando personal...' : `${filteredUsers.length} de ${liveUsers.length} activos`}</div>
               </div>
             )}
             <button
@@ -458,29 +505,29 @@ export const MonitoringPage = () => {
                         }}
                       >
                         {/* Card content */}
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: 0 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flex: 1, minWidth: 0 }}>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.2rem', minWidth: 0 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.35rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
                               <div className="avatar" style={{ width: 32, height: 32, fontSize: '0.72rem', flexShrink: 0 }}>
                                 {u.full_name.split(' ').slice(0, 2).map(n => n[0]).join('')}
                               </div>
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ fontWeight: 500, fontSize: '0.85rem' }}>{u.full_name}</div>
-                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{u.role}</div>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontWeight: 500, fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.full_name}</div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{u.role}</div>
                               </div>
                             </div>
-                            <span className={`badge ${sc.cls}`} style={{ fontSize: '0.68rem', flexShrink: 0 }}>{sc.label}</span>
+                            <span className={`badge ${sc.cls}`} style={{ fontSize: '0.65rem', flexShrink: 0, padding: '2px 6px' }}>{sc.label}</span>
                           </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '2.4rem' }}>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', paddingLeft: '2.5rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             📍 {u.client_name || 'Sin ubicación reciente'}
                           </div>
                         </div>
 
                         {/* Arrow — vertically centered to the whole card height */}
-                        <div style={{ flexShrink: 0, width: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ flexShrink: 0, width: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {isActive && (
                             <ChevronRight
-                              size={20}
+                              size={18}
                               style={{
                                 color: '#fff',
                                 opacity: detailVisible ? 1 : 0,
@@ -503,7 +550,8 @@ export const MonitoringPage = () => {
           <div
             className="card"
             style={{
-              height: 'calc(100vh - 140px)',
+              height: '100%',
+              minHeight: 0,
               display: 'flex',
               flexDirection: 'column',
               padding: 0,
@@ -515,22 +563,22 @@ export const MonitoringPage = () => {
             }}
           >
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '1rem' }}>
-              <div style={{ flex: 1, marginRight: '1rem', display: 'flex', gap: '0.85rem' }}>
-                <div className="avatar" style={{ width: 42, height: 42, fontSize: '0.9rem', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '0.75rem 1rem' }}>
+              <div style={{ flex: 1, marginRight: '0.5rem', display: 'flex', gap: '0.75rem', minWidth: 0 }}>
+                <div className="avatar" style={{ width: 38, height: 38, fontSize: '0.85rem', flexShrink: 0 }}>
                   {selectedUser.full_name.split(' ').slice(0, 2).map(n => n[0]).join('')}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{selectedUser.full_name}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', minWidth: 0, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedUser.full_name}</span>
                     <span className={`badge ${STATUS_CONFIG[selectedUser.status]?.cls ?? 'badge-neutral'}`} style={{ padding: '0.1rem 0.4rem', fontSize: '0.65rem' }}>
                       {STATUS_CONFIG[selectedUser.status]?.label ?? selectedUser.status}
                     </span>
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     <span style={{ textTransform: 'capitalize' }}>{selectedUser.role}</span>
                     <span>•</span>
-                    <span>📍 {selectedUser.client_name}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>📍 {selectedUser.client_name}</span>
                   </div>
                 </div>
               </div>
@@ -543,80 +591,80 @@ export const MonitoringPage = () => {
             </div>
             
             {/* Última Actividad (Moved to header area) */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderBottom: '1px solid var(--surface-border)' }}>
-              <div className="form-label" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.55rem 1rem', borderBottom: '1px solid var(--surface-border)' }}>
+              <div className="form-label" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem' }}>
                 Última Actividad
                 <span className="tooltip-container" style={{ display: 'flex' }}>
                   <HelpCircle size={14} color="var(--text-muted)" />
                   <div className="tooltip-text">Hora de la última actualización GPS o tarea.</div>
                 </span>
               </div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
                 {selectedUser.last_activity ? new Date(selectedUser.last_activity).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : '—'}
               </div>
             </div>
 
             {/* Stats */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1.25rem', overflow: 'visible', flex: 1, minHeight: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.75rem 1rem', overflow: 'hidden', flex: 1, minHeight: 0 }}>
 
               {/* Estadísticas Calculadas */}
               {(() => {
                 const stats = calculateStats(userTasks);
                 return (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                    <div style={{ background: 'var(--surface-hover)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
-                        <Navigation size={14} color="#3b82f6" /> Distancia
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', flexShrink: 0 }}>
+                    <div style={{ background: 'var(--surface-hover)', padding: '0.5rem 0.65rem', borderRadius: 'var(--radius-md)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', fontSize: '0.72rem', marginBottom: '0.2rem', whiteSpace: 'nowrap' }}>
+                        <Navigation size={13} color="#3b82f6" /> Distancia
                         <span className="tooltip-container" style={{ display: 'flex', marginLeft: 'auto' }}>
-                          <HelpCircle size={14} color="var(--text-muted)" />
+                          <HelpCircle size={13} color="var(--text-muted)" />
                           <div className="tooltip-text">Distancia total estimada recorrida hoy. Se calcula sumando las separaciones en línea recta entre las ubicaciones de las tareas consecutivas registradas en el sistema</div>
                         </span>
                       </div>
-                      <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{stats.distance} km</div>
+                      <div style={{ fontWeight: 600, fontSize: '0.88rem', whiteSpace: 'nowrap' }}>{stats.distance} km</div>
                     </div>
-                    <div style={{ background: 'var(--surface-hover)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
-                        <Clock size={14} color="#f59e0b" /> Tiempo ruta
+                    <div style={{ background: 'var(--surface-hover)', padding: '0.5rem 0.65rem', borderRadius: 'var(--radius-md)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', fontSize: '0.72rem', marginBottom: '0.2rem', whiteSpace: 'nowrap' }}>
+                        <Clock size={13} color="#f59e0b" /> Tiempo ruta
                         <span className="tooltip-container tooltip-right" style={{ display: 'flex', marginLeft: 'auto' }}>
-                          <HelpCircle size={14} color="var(--text-muted)" />
+                          <HelpCircle size={13} color="var(--text-muted)" />
                           <div className="tooltip-text">Tiempo total transcurrido desde el registro de la primera tarea del día hasta la más reciente</div>
                         </span>
                       </div>
-                      <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{formatMinutes(stats.timeInRoute)}</div>
+                      <div style={{ fontWeight: 600, fontSize: '0.88rem', whiteSpace: 'nowrap' }}>{formatMinutes(stats.timeInRoute)}</div>
                     </div>
-                    <div style={{ background: 'var(--surface-hover)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
-                        <Timer size={14} color="#ef4444" /> Inactividad
+                    <div style={{ background: 'var(--surface-hover)', padding: '0.5rem 0.65rem', borderRadius: 'var(--radius-md)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', fontSize: '0.72rem', marginBottom: '0.2rem', whiteSpace: 'nowrap' }}>
+                        <Timer size={13} color="#ef4444" /> Inactividad
                         <span className="tooltip-container" style={{ display: 'flex', marginLeft: 'auto' }}>
-                          <HelpCircle size={14} color="var(--text-muted)" />
+                          <HelpCircle size={13} color="var(--text-muted)" />
                           <div className="tooltip-text">Tiempo transcurrido desde el último registro de tarea hasta la hora actual (solo aplicable si el día de trabajo no ha finalizado).</div>
                         </span>
                       </div>
-                      <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{formatMinutes(stats.timeInactive)}</div>
+                      <div style={{ fontWeight: 600, fontSize: '0.88rem', whiteSpace: 'nowrap' }}>{formatMinutes(stats.timeInactive)}</div>
                     </div>
-                    <div style={{ background: 'var(--surface-hover)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
-                        <ClipboardList size={14} color="#10b981" /> Tareas hoy
+                    <div style={{ background: 'var(--surface-hover)', padding: '0.5rem 0.65rem', borderRadius: 'var(--radius-md)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', fontSize: '0.72rem', marginBottom: '0.2rem', whiteSpace: 'nowrap' }}>
+                        <ClipboardList size={13} color="#10b981" /> Tareas hoy
                         <span className="tooltip-container tooltip-right" style={{ display: 'flex', marginLeft: 'auto' }}>
-                          <HelpCircle size={14} color="var(--text-muted)" />
+                          <HelpCircle size={13} color="var(--text-muted)" />
                           <div className="tooltip-text">Cantidad total de tareas registradas durante la jornada de hoy.</div>
                         </span>
                       </div>
-                      <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{stats.total}</div>
+                      <div style={{ fontWeight: 600, fontSize: '0.88rem', whiteSpace: 'nowrap' }}>{stats.total}</div>
                     </div>
                   </div>
                 );
               })()}
 
-              <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                <div className="form-label" style={{ marginBottom: '0.75rem', flexShrink: 0 }}>Registro de hoy</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', overflowY: 'auto', flex: 1, paddingRight: '4px', paddingBottom: '0.5rem' }}>
+              <div style={{ marginTop: '0.25rem', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                <div className="form-label" style={{ marginBottom: '0.4rem', fontSize: '0.8rem', flexShrink: 0 }}>Registro de hoy</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', overflowY: 'auto', flex: 1, paddingRight: '4px', paddingBottom: '0.25rem' }}>
                   {loadingTasks ? (
-                    <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', background: 'var(--surface-hover)', borderRadius: 'var(--radius-md)' }}>
+                    <div style={{ padding: '1.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', background: 'var(--surface-hover)', borderRadius: 'var(--radius-md)' }}>
                       Cargando registro...
                     </div>
                   ) : userTasks.length === 0 ? (
-                    <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', background: 'var(--surface-hover)', borderRadius: 'var(--radius-md)' }}>
+                    <div style={{ padding: '1.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', background: 'var(--surface-hover)', borderRadius: 'var(--radius-md)' }}>
                       Aún no hay tareas registradas hoy.
                     </div>
                   ) : (
@@ -630,7 +678,7 @@ export const MonitoringPage = () => {
                           key={t.id} 
                           onClick={() => handleSelectTask(isActive ? null : t)} 
                           style={{ 
-                            padding: '0.75rem', 
+                            padding: '0.5rem 0.65rem', 
                             borderRadius: 'var(--radius-md)', 
                             background: isActive ? 'var(--surface-border)' : 'var(--surface-hover)', 
                             borderLeft: `3px solid ${color}`, 
@@ -643,14 +691,14 @@ export const MonitoringPage = () => {
                           onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--surface-border)' }} 
                           onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'var(--surface-hover)' }}
                         >
-                          <div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>{timeString}</div>
-                            <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{t.client_name}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.15rem' }}>{timeString}</div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.client_name}</div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
                               {STATUS_CONFIG[t.status]?.label ?? t.status}
                             </div>
                           </div>
-                          {isActive && <ChevronRight size={20} style={{ color: '#fff' }} />}
+                          {isActive && <ChevronRight size={18} style={{ color: '#fff', flexShrink: 0 }} />}
                         </div>
                       );
                     })
@@ -670,7 +718,8 @@ export const MonitoringPage = () => {
               overflow: 'hidden', 
               display: 'flex', 
               flexDirection: 'column', 
-              height: 'calc(100vh - 140px)',
+              height: '100%',
+              minHeight: 0,
               position: 'relative',
               zIndex: 2000,
               opacity: taskDetailVisible ? 1 : 0,
@@ -708,7 +757,7 @@ export const MonitoringPage = () => {
               </button>
             </div>
             
-            <div style={{ padding: '0 1.5rem 1.5rem', flex: 1, overflowY: 'auto' }}>
+            <div style={{ padding: '0 1.5rem 1.5rem', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
               {taskDetailTab === 'info' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)', alignItems: 'flex-start' }}>
@@ -769,9 +818,9 @@ export const MonitoringPage = () => {
                 </div>
               )}
               {taskDetailTab === 'evidence' && (
-                <div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                   {selectedTaskModal.evidences && selectedTaskModal.evidences.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, minHeight: 0 }}>
                       {selectedTaskModal.evidences.map((ev) => {
                         const evLat = ev.lat;
                         const evLng = ev.lng;
@@ -784,26 +833,41 @@ export const MonitoringPage = () => {
                         const isValid = dist !== null && dist <= maxDist;
 
                         return (
-                          <div key={ev.id} style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--surface-border)', position: 'relative' }}>
+                          <div 
+                            key={ev.id} 
+                            style={{ 
+                              borderRadius: 'var(--radius-md)', 
+                              overflow: 'hidden', 
+                              border: '1px solid var(--surface-border)', 
+                              position: 'relative',
+                              width: '100%',
+                              flex: selectedTaskModal.evidences!.length === 1 ? 1 : 'none',
+                              minHeight: '280px',
+                              height: selectedTaskModal.evidences!.length === 1 ? '100%' : '320px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              backgroundColor: 'var(--surface-ground)'
+                            }}
+                          >
                             <img 
                               src={getMediaUrl(ev.file_url)} 
                               alt="Evidencia" 
-                              style={{ width: '100%', height: '180px', objectFit: 'cover', display: 'block', cursor: 'pointer' }} 
+                              style={{ width: '100%', height: '100%', flex: 1, objectFit: 'cover', display: 'block', cursor: 'pointer' }} 
                               onClick={() => setFullScreenImage(getMediaUrl(ev.file_url))}
                             />
                             
-                            <div style={{ position: 'absolute', top: 8, right: 8, background: isValid ? 'rgba(16, 185, 129, 0.9)' : 'rgba(239, 68, 68, 0.9)', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)' }}>
-                              <MapPin size={12} />
+                            <div style={{ position: 'absolute', top: 10, right: 10, background: isValid ? 'rgba(16, 185, 129, 0.92)' : 'rgba(239, 68, 68, 0.92)', color: 'white', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px', boxShadow: '0 2px 6px rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}>
+                              <MapPin size={13} />
                               {isValid ? `Válido (<${maxDist}m)` : (dist ? `Inválido (${dist.toFixed(0)}m)` : 'Sin GPS')}
                             </div>
 
-                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '6px 8px', fontSize: '0.65rem', display: 'flex', flexDirection: 'column', gap: '2px', backdropFilter: 'blur(2px)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontFamily: 'monospace', letterSpacing: '-0.5px' }}>
+                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%)', color: '#fff', padding: '8px 12px', fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: '2px', backdropFilter: 'blur(2px)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                <span style={{ fontFamily: 'monospace', letterSpacing: '-0.3px', fontWeight: 500 }}>
                                   {ev.lat !== null && ev.lng !== null ? `${ev.lat.toFixed(6)}, ${ev.lng.toFixed(6)}` : 'GPS no disp.'}
                                 </span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                  <Clock size={10} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <Clock size={11} />
                                   <span>{ev.captured_at ? new Date(ev.captured_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
                                 </div>
                               </div>
@@ -833,7 +897,11 @@ export const MonitoringPage = () => {
             overflow: 'hidden', 
             cursor: (selectedUser && selectedTaskModal) ? 'pointer' : 'default', 
             transition: 'all 0.3s',
-            position: 'relative'
+            position: 'relative',
+            height: '100%',
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column'
           }}
           onClick={() => {
             if (selectedUser && selectedTaskModal) {
@@ -854,12 +922,13 @@ export const MonitoringPage = () => {
               <ChevronLeft size={48} style={{ color: 'var(--text-primary)', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))' }} />
             </div>
           )}
-          <div style={{ pointerEvents: (selectedUser && selectedTaskModal) ? 'none' : 'auto', height: '100%', opacity: (selectedUser && selectedTaskModal) ? 0.6 : 1 }}>
+          <div style={{ pointerEvents: (selectedUser && selectedTaskModal) ? 'none' : 'auto', height: '100%', flex: 1, minHeight: 0, opacity: (selectedUser && selectedTaskModal) ? 0.6 : 1 }}>
             <LiveMap 
               users={filteredUsers} 
               selectedUserId={selectedUser?.user_id} 
               isCompressed={!!(selectedUser && selectedTaskModal)}
-              height="calc(100vh - 140px)" 
+              refreshTrigger={refreshTrigger}
+              height="100%" 
             />
           </div>
         </div>

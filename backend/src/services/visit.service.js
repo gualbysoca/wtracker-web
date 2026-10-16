@@ -100,6 +100,15 @@ const createVisit = async ({ id, user_id, client_id, status, lat, lng, notes, ti
     [user_id, client_id, status, lat, lng, distanceMeters, notes || null, startedAt, completedAt, id]
   );
 
+  // Si el usuario reporta una visita (especialmente si se pone 'en_ruta' hacia un cliente),
+  // nos aseguramos de que esté marcado en turno (is_on_shift = TRUE) para que sea visible en el monitoreo.
+  if (status === 'en_ruta') {
+    await query(
+      `UPDATE users SET is_on_shift = TRUE, updated_at = NOW() WHERE id = $1 AND is_on_shift = FALSE`,
+      [user_id]
+    );
+  }
+
   eventBus.emit('map_update');
   return result.rows[0];
 };

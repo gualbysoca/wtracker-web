@@ -42,7 +42,7 @@ const updateClientSchema = createClientSchema.partial();
 const clientQuerySchema = z.object({
   page:   z.coerce.number().int().positive().default(1),
   limit:  z.coerce.number().int().positive().max(500).default(20),
-  search: z.string().optional(),
+  search: z.string().trim().optional(),
 });
 
 const BULK_MAX_ROWS = 1000;

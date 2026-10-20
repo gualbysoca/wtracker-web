@@ -756,7 +756,7 @@ export const PerformancePage = () => {
                 </div>
                 <div>
                   <div className="card-title" style={{ fontSize: '1.05rem' }}>{selectedTaskModal.client_name}</div>
-                  <div className="card-subtitle">{selectedTaskModal.client_address || 'Sin dirección'}</div>
+                  <div className="card-subtitle">{selectedTaskModal.client_contact || 'Sin contacto'}</div>
                 </div>
               </div>
               <button className="btn btn-ghost btn-sm btn-icon" onClick={() => handleSelectTask(null)}>
@@ -826,7 +826,15 @@ export const PerformancePage = () => {
                     </div>
                   </div>
 
-
+                  <div style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)', alignItems: 'flex-start' }}>
+                    <MapPin size={18} style={{ color: 'var(--color-primary-400)', marginTop: '0.1rem', flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.1rem' }}>Dirección</div>
+                      <span style={{ fontSize: '0.9rem' }}>
+                        {selectedTaskModal.client_address || 'Sin dirección'}
+                      </span>
+                    </div>
+                  </div>
 
                   <div style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)', alignItems: 'flex-start' }}>
                     <Calendar size={18} style={{ color: 'var(--color-primary-400)', marginTop: '0.1rem', flexShrink: 0 }} />

@@ -4,24 +4,34 @@
 const { query } = require('../configs/database');
 const { createClientSchema, updateClientSchema } = require('../validations/client.validation');
 const { getGeofenceRadiusMeters } = require('./setting.service');
+const { tokenizeSearchQuery, escapeSqlLike, buildUnaccentExpression } = require('../utils/textSearch.util');
+
+const SEARCHABLE_CLIENT_COLUMNS = ['business_name', 'contact_name', 'address'];
 
 const listClients = async ({ page = 1, limit = 20, search }) => {
   const offset = (page - 1) * limit;
   const params = [];
   const conditions = ['is_active = TRUE'];
 
-  if (search) {
-    params.push(`%${search}%`);
-    conditions.push(`(business_name ILIKE $${params.length} OR address ILIKE $${params.length} OR contact_name ILIKE $${params.length})`);
+  const searchTokens = tokenizeSearchQuery(search);
+  if (searchTokens.length > 0) {
+    const targetExpr = `CONCAT_WS(' ', ${SEARCHABLE_CLIENT_COLUMNS.join(', ')})`;
+    const normalizedExpr = buildUnaccentExpression(targetExpr);
+
+    searchTokens.forEach((token) => {
+      params.push(`%${escapeSqlLike(token)}%`);
+      conditions.push(`${normalizedExpr} LIKE $${params.length}`);
+    });
   }
 
   const whereClause = conditions.join(' AND ');
 
   const countResult = await query(
-    `SELECT COUNT(*) FROM clients WHERE ${whereClause}`, params
+    `SELECT COUNT(*) FROM clients WHERE ${whereClause}`,
+    params
   );
 
-  params.push(limit, offset);
+  const queryParams = [...params, limit, offset];
   const result = await query(
     `SELECT
        id, business_name, contact_name, phone, email,
@@ -29,11 +39,12 @@ const listClients = async ({ page = 1, limit = 20, search }) => {
      FROM clients
      WHERE ${whereClause}
      ORDER BY business_name ASC
-     LIMIT $${params.length - 1} OFFSET $${params.length}`,
-    params
+     LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}`,
+    queryParams
   );
 
-  return { clients: result.rows, total: parseInt(countResult.rows[0].count) };
+  const total = countResult.rows?.[0]?.count ? parseInt(countResult.rows[0].count, 10) : 0;
+  return { clients: result.rows, total };
 };
 
 /**

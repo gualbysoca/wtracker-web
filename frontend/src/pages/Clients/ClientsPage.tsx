@@ -525,7 +525,7 @@ export const ClientsPage = () => {
           }}>
             <div className="card" style={{ padding: '0.85rem 1.25rem', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                <div className="search-bar" style={{ flex: 1, minWidth: '220px' }}>
+                <div className="search-bar" style={{ flex: 1, minWidth: '220px', position: 'relative' }}>
                   <Search size={16} className="search-bar-icon" />
                   <input
                     id="clients-search"
@@ -535,6 +535,29 @@ export const ClientsPage = () => {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={() => setSearch('')}
+                      style={{
+                        position: 'absolute',
+                        right: '0.75rem',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        padding: '0.2rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      title="Limpiar búsqueda"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
                 </div>
                 <span id="clients-total-counter" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                   <strong style={{ color: 'var(--text-primary)', fontSize: '1rem' }}>{totalClients.toLocaleString('es-BO')}</strong>{' '}
@@ -904,7 +927,7 @@ export const ClientsPage = () => {
               </div>
               <div>
                 <div className="card-title" style={{ fontSize: '1.1rem' }}>{selectedTask.client_name}</div>
-                <div className="card-subtitle">{selectedTask.client_address || 'Sin dirección'}</div>
+                <div className="card-subtitle">{selectedTask.client_contact || 'Sin contacto'}</div>
               </div>
             </div>
             <button className="btn btn-ghost btn-sm btn-icon" onClick={() => handleSelectTask(null)}>
@@ -967,6 +990,16 @@ export const ClientsPage = () => {
                         );
                       })()}
                     </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)', alignItems: 'flex-start' }}>
+                  <MapPin size={18} style={{ color: 'var(--color-primary-400)', marginTop: '0.1rem', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.1rem' }}>Dirección</div>
+                    <span style={{ fontSize: '0.9rem' }}>
+                      {selectedTask.client_address || 'Sin dirección'}
+                    </span>
                   </div>
                 </div>
 

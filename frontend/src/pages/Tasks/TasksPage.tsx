@@ -424,7 +424,7 @@ export const TasksPage = () => {
                 </div>
                 <div>
                   <div className="card-title" style={{ fontSize: '1rem' }}>{selectedTask.client_name}</div>
-                  <div className="card-subtitle">{selectedTask.client_address || 'Sin dirección'}</div>
+                  <div className="card-subtitle">{selectedTask.client_contact || 'Sin contacto'}</div>
                 </div>
               </div>
               <button
@@ -488,6 +488,16 @@ export const TasksPage = () => {
                           );
                         })()}
                       </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)', alignItems: 'flex-start' }}>
+                    <MapPin size={18} style={{ color: 'var(--color-primary-400)', marginTop: '0.1rem', flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.1rem' }}>Dirección</div>
+                      <span style={{ fontSize: '0.9rem' }}>
+                        {selectedTask.client_address || 'Sin dirección'}
+                      </span>
                     </div>
                   </div>
 

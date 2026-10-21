@@ -50,4 +50,6 @@ const authorize = (...allowedRoles) => (req, res, next) => {
   return next();
 };
 
-module.exports = { authenticate, authorize };
+const authenticateToken = authenticate;
+
+module.exports = { authenticate, authenticateToken, authorize };

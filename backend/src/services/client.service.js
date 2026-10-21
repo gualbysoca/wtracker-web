@@ -5,8 +5,18 @@ const { query } = require('../configs/database');
 const { createClientSchema, updateClientSchema } = require('../validations/client.validation');
 const { getGeofenceRadiusMeters } = require('./setting.service');
 const { tokenizeSearchQuery, escapeSqlLike, buildUnaccentExpression } = require('../utils/textSearch.util');
+const { toMobileClientDTO, formatClientRecord } = require('../models/client.model');
 
-const SEARCHABLE_CLIENT_COLUMNS = ['business_name', 'contact_name', 'address'];
+const SEARCHABLE_CLIENT_COLUMNS = [
+  'business_name',
+  'contact_name',
+  'address',
+  'delivery_address',
+  'stall_number',
+  'client_code',
+  "'cod ' || client_code",
+  "'codigo ' || client_code",
+];
 
 const listClients = async ({ page = 1, limit = 20, search }) => {
   const offset = (page - 1) * limit;
@@ -35,7 +45,8 @@ const listClients = async ({ page = 1, limit = 20, search }) => {
   const result = await query(
     `SELECT
        id, business_name, contact_name, phone, email,
-       address, city, lat, lng, notes, is_active, created_at
+       address, delivery_address, stall_number, client_code, city,
+       lat, lng, notes, is_active, created_at
      FROM clients
      WHERE ${whereClause}
      ORDER BY business_name ASC
@@ -44,7 +55,7 @@ const listClients = async ({ page = 1, limit = 20, search }) => {
   );
 
   const total = countResult.rows?.[0]?.count ? parseInt(countResult.rows[0].count, 10) : 0;
-  return { clients: result.rows, total };
+  return { clients: result.rows.map(formatClientRecord), total };
 };
 
 /**
@@ -57,7 +68,8 @@ const listClientsForMobile = async () => {
     query(
       `SELECT
          c.id, c.business_name, c.contact_name, c.phone,
-         c.address, c.lat, c.lng,
+         c.address, c.delivery_address, c.stall_number, c.client_code,
+         c.lat, c.lng,
          -- Último estado de visita
          (SELECT v.status
           FROM visits v
@@ -74,7 +86,7 @@ const listClientsForMobile = async () => {
     getGeofenceRadiusMeters(),
   ]);
 
-  return result.rows.map((row) => ({ ...row, geofence_radius: geofenceRadius }));
+  return result.rows.map((row) => toMobileClientDTO(row, geofenceRadius));
 };
 
 const getClientById = async (id) => {
@@ -91,63 +103,131 @@ const getClientById = async (id) => {
     [id]
   );
 
-  return result.rows[0] || null;
+  return formatClientRecord(result.rows[0]);
 };
 
 const createClient = async (data) => {
-  const { business_name, contact_name, phone, email, address, city, lat, lng, notes } = data;
+  const {
+    business_name,
+    contact_name,
+    phone,
+    email,
+    address,
+    delivery_address,
+    stall_number,
+    nro_puesto,
+    client_code,
+    city,
+    lat,
+    lng,
+    notes,
+  } = data;
+
+  const resolvedStallNumber = stall_number !== undefined ? stall_number : (nro_puesto || null);
 
   // lat/lng se pasan como strings para evitar la ambigüedad de tipos que PostgreSQL
   // genera cuando el mismo parámetro aparece en una columna numeric Y en ST_MakePoint(float8)
   const result = await query(
     `INSERT INTO clients
-       (business_name, contact_name, phone, email, address, city,
+       (business_name, contact_name, phone, email, address, delivery_address, stall_number, client_code, city,
         lat, lng, location, notes)
      VALUES
-       ($1, $2, $3, $4, $5, $6,
-        ($7::text)::numeric, ($8::text)::numeric,
-        ST_MakePoint(($8::text)::float8, ($7::text)::float8)::geography,
-        $9)
-     RETURNING id, business_name, contact_name, phone, email, address, city, lat, lng, created_at`,
-    [business_name, contact_name || null, phone || null, email || null,
-     address || null, city || null,
-     String(lat), String(lng),
-     notes || null]
+       ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+        ($10::text)::numeric, ($11::text)::numeric,
+        ST_MakePoint(($11::text)::float8, ($10::text)::float8)::geography,
+        $12)
+     RETURNING id, business_name, contact_name, phone, email, address, delivery_address, stall_number, client_code, city, lat, lng, created_at`,
+    [
+      business_name,
+      contact_name || null,
+      phone || null,
+      email || null,
+      address || null,
+      delivery_address || null,
+      resolvedStallNumber,
+      client_code || null,
+      city || null,
+      String(lat),
+      String(lng),
+      notes || null,
+    ]
   );
 
-  return result.rows[0];
+  return formatClientRecord(result.rows[0]);
 };
 
 const updateClient = async (id, data) => {
   const fields = [];
   const params = [];
 
-  const UPDATABLE = ['business_name', 'contact_name', 'phone', 'email', 'address', 'city', 'notes', 'is_active'];
+  const resolvedData = { ...data };
+  if (resolvedData.nro_puesto !== undefined && resolvedData.stall_number === undefined) {
+    resolvedData.stall_number = resolvedData.nro_puesto;
+  }
+  delete resolvedData.nro_puesto;
+  if (resolvedData.mercado !== undefined && resolvedData.business_name === undefined) {
+    resolvedData.business_name = resolvedData.mercado;
+  }
+  delete resolvedData.mercado;
+
+  const UPDATABLE = [
+    'business_name',
+    'contact_name',
+    'phone',
+    'email',
+    'address',
+    'delivery_address',
+    'stall_number',
+    'client_code',
+    'city',
+    'notes',
+    'is_active',
+  ];
 
   for (const field of UPDATABLE) {
-    if (data[field] !== undefined) {
-      params.push(data[field]);
+    if (resolvedData[field] !== undefined) {
+      params.push(resolvedData[field]);
       fields.push(`${field} = $${params.length}`);
     }
   }
 
-  if (data.lat !== undefined && data.lng !== undefined) {
-    params.push(String(data.lat), String(data.lng));
-    fields.push(`lat = ($${params.length - 1}::text)::numeric`);
-    fields.push(`lng = ($${params.length}::text)::numeric`);
-    fields.push(`location = ST_MakePoint(($${params.length}::text)::float8, ($${params.length - 1}::text)::float8)::geography`);
+  let latToUpdate = resolvedData.lat;
+  let lngToUpdate = resolvedData.lng;
+
+  if (latToUpdate !== undefined || lngToUpdate !== undefined) {
+    if (latToUpdate === null || lngToUpdate === null) {
+      fields.push(`lat = NULL`);
+      fields.push(`lng = NULL`);
+      fields.push(`location = NULL`);
+    } else {
+      if (latToUpdate === undefined || lngToUpdate === undefined) {
+        const existing = await query(`SELECT lat, lng FROM clients WHERE id = $1`, [id]);
+        if (existing.rows[0]) {
+          if (latToUpdate === undefined) latToUpdate = existing.rows[0].lat;
+          if (lngToUpdate === undefined) lngToUpdate = existing.rows[0].lng;
+        }
+      }
+      if (latToUpdate !== undefined && lngToUpdate !== undefined && latToUpdate !== null && lngToUpdate !== null) {
+        params.push(String(latToUpdate), String(lngToUpdate));
+        fields.push(`lat = ($${params.length - 1}::text)::numeric`);
+        fields.push(`lng = ($${params.length}::text)::numeric`);
+        fields.push(`location = ST_MakePoint(($${params.length}::text)::float8, ($${params.length - 1}::text)::float8)::geography`);
+      }
+    }
   }
 
   if (fields.length === 0) return getClientById(id);
 
+  fields.push('updated_at = NOW()');
+
   params.push(id);
   const result = await query(
     `UPDATE clients SET ${fields.join(', ')} WHERE id = $${params.length}
-     RETURNING id, business_name, contact_name, phone, email, address, city, lat, lng, notes, is_active, created_at, updated_at`,
+     RETURNING id, business_name, contact_name, phone, email, address, delivery_address, stall_number, client_code, city, lat, lng, notes, is_active, created_at, updated_at`,
     params
   );
 
-  return result.rows[0] || null;
+  return formatClientRecord(result.rows[0]);
 };
 
 const deleteClient = async (id) => {

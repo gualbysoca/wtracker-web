@@ -31,7 +31,7 @@ const tokenizeSearchQuery = (query) => {
 
   return normalized
     .split(/\s+/)
-    .map((token) => token.replace(/^[,;.-]+|[,;.-]+$/g, '').trim())
+    .map((token) => token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '').trim())
     .filter((token) => token.length > 0);
 };
 

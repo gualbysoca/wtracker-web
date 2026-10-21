@@ -97,6 +97,7 @@ export const BulkClientsModal = ({ onClose, onCompleted }: BulkClientsModalProps
           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
             Columna <strong>accion</strong>: <code>crear</code>, <code>modificar</code> o <code>eliminar</code>.
             Para modificar o eliminar se requiere la columna <strong>id</strong> (descarga el listado actual para obtenerla).
+            Incluye soporte para <strong>client_code</strong> (código comercial), <strong>delivery_address</strong> (dirección de entrega) y <strong>stall_number</strong> (nro. de puesto).
             Al modificar, las celdas vacías no cambian el valor existente.
           </div>
 

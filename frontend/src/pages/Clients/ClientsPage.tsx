@@ -1,7 +1,7 @@
 // src/pages/Clients/ClientsPage.tsx
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Store, Search, MapPin, Plus, Edit2, Trash2, X, Phone, Mail, ChevronRight, ClipboardList, User as UserIcon, Calendar, FileImage, Clock, Maximize, Minimize, Upload, Download } from 'lucide-react';
+import { Store, Search, MapPin, Plus, Edit2, Trash2, X, Phone, Mail, ChevronRight, ClipboardList, User as UserIcon, Calendar, FileImage, Clock, Maximize, Minimize, Upload, Download, Tag, Truck } from 'lucide-react';
 import type { Client, Visit } from '../../types';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ImageModal } from '../../components/ui/ImageModal';
@@ -227,10 +227,13 @@ export const ClientsPage = () => {
   const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
   const [formData, setFormData] = useState({
     business_name: '',
+    client_code: '',
     contact_name: '',
     phone: '',
     email: '',
     address: '',
+    delivery_address: '',
+    stall_number: '',
     city: 'Santa Cruz',
     lat: BOLIVIA_CITIES['Santa Cruz'].lat,
     lng: BOLIVIA_CITIES['Santa Cruz'].lng
@@ -349,8 +352,17 @@ export const ClientsPage = () => {
   const handleOpenCreate = () => {
     setEditingId(null);
     setFormData({
-      business_name: '', contact_name: '', phone: '', email: '', address: '', 
-      city: 'Santa Cruz', lat: BOLIVIA_CITIES['Santa Cruz'].lat, lng: BOLIVIA_CITIES['Santa Cruz'].lng
+      business_name: '',
+      client_code: '',
+      contact_name: '',
+      phone: '',
+      email: '',
+      address: '',
+      delivery_address: '',
+      stall_number: '',
+      city: 'Santa Cruz',
+      lat: BOLIVIA_CITIES['Santa Cruz'].lat,
+      lng: BOLIVIA_CITIES['Santa Cruz'].lng
     });
     setFormErrors({});
     setIsModalOpen(true);
@@ -361,10 +373,13 @@ export const ClientsPage = () => {
     setEditingId(client.id);
     setFormData({
       business_name: client.business_name,
+      client_code: client.client_code || '',
       contact_name: client.contact_name || '',
       phone: client.phone || '',
       email: client.email || '',
       address: client.address || '',
+      delivery_address: client.delivery_address || '',
+      stall_number: client.stall_number || '',
       city: client.city || 'Santa Cruz',
       lat: client.lat,
       lng: client.lng
@@ -531,7 +546,7 @@ export const ClientsPage = () => {
                     id="clients-search"
                     type="text"
                     className="form-input"
-                    placeholder="Buscar por nombre de mercado o contacto..."
+                    placeholder="Buscar por mercado, contacto o código..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -622,14 +637,19 @@ export const ClientsPage = () => {
                       >
                         {!listCollapsed && (
                           <td>
-                            <div style={{ fontWeight: isActive ? 600 : 500 }}>
-                              {client.business_name}
+                            <div style={{ fontWeight: isActive ? 600 : 500, display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              <span>{client.business_name}</span>
+                              {client.stall_number && (
+                                <span style={{ fontSize: '0.75rem', padding: '0.1rem 0.4rem', borderRadius: '4px', backgroundColor: 'var(--surface-border)', color: 'var(--text-secondary)' }}>
+                                  Puesto {client.stall_number}
+                                </span>
+                              )}
                             </div>
                           </td>
                         )}
                         {!listCollapsed && (
                           <td style={{ color: 'var(--text-secondary)' }}>
-                            {client.contact_name || '—'}
+                            {[client.contact_name, client.client_code].filter(Boolean).join(' - ') || '—'}
                           </td>
                         )}
                         {!listCollapsed && (
@@ -735,7 +755,7 @@ export const ClientsPage = () => {
                 </div>
                 <div>
                   <div className="card-title" style={{ fontSize: '1.1rem' }}>{selectedClient.business_name}</div>
-                  <div className="card-subtitle">{selectedClient.contact_name || 'Sin contacto asignado'}</div>
+                  <div className="card-subtitle">{[selectedClient.contact_name, selectedClient.client_code].filter(Boolean).join(' - ') || 'Sin contacto asignado'}</div>
                 </div>
               </div>
               <button
@@ -756,10 +776,28 @@ export const ClientsPage = () => {
             <div style={{ padding: '0 1.5rem 1.5rem', flex: 1, overflowY: 'auto' }}>
               {detailsTab === 'datos' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {selectedClient.client_code && (
+                    <div style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)' }}>
+                      <Tag size={18} style={{ color: 'var(--color-primary-400)' }} />
+                      <span style={{ fontSize: '0.9rem' }}><strong>Código Comercial:</strong> {selectedClient.client_code}</span>
+                    </div>
+                  )}
+                  {selectedClient.stall_number && (
+                    <div style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)' }}>
+                      <Store size={18} style={{ color: 'var(--color-primary-400)' }} />
+                      <span style={{ fontSize: '0.9rem' }}><strong>Nro. de Puesto:</strong> {selectedClient.stall_number}</span>
+                    </div>
+                  )}
                   {selectedClient.address && (
                     <div style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)' }}>
                       <MapPin size={18} style={{ color: 'var(--color-primary-400)' }} />
-                      <span style={{ fontSize: '0.9rem' }}>{selectedClient.address} {selectedClient.city ? `(${selectedClient.city})` : ''}</span>
+                      <span style={{ fontSize: '0.9rem' }}><strong>Dirección:</strong> {selectedClient.address} {selectedClient.city ? `(${selectedClient.city})` : ''}</span>
+                    </div>
+                  )}
+                  {selectedClient.delivery_address && (
+                    <div style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)' }}>
+                      <Truck size={18} style={{ color: 'var(--color-primary-400)' }} />
+                      <span style={{ fontSize: '0.9rem' }}><strong>Dirección de Entrega:</strong> {selectedClient.delivery_address}</span>
                     </div>
                   )}
                   {selectedClient.phone && (
@@ -1106,15 +1144,27 @@ export const ClientsPage = () => {
             </div>
             <div className="modal-body">
               <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                <div className="form-group">
-                  <label className="form-label required">Nombre del Mercado</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={formData.business_name}
-                    onChange={(e) => setFormData({ ...formData, business_name: e.target.value })}
-                    required
-                  />
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="form-label required">Nombre del Mercado / Negocio</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={formData.business_name}
+                      onChange={(e) => setFormData({ ...formData, business_name: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Código Comercial (WooCommerce)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ej: 1045"
+                      value={formData.client_code}
+                      onChange={(e) => setFormData({ ...formData, client_code: e.target.value })}
+                    />
+                  </div>
                 </div>
                 
                 <div className="form-grid">
@@ -1145,6 +1195,16 @@ export const ClientsPage = () => {
 
                 <div className="form-grid">
                   <div className="form-group">
+                    <label className="form-label">Nro. de Puesto (Mercado)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ej: Puesto 12"
+                      value={formData.stall_number}
+                      onChange={(e) => setFormData({ ...formData, stall_number: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
                     <label className="form-label required">Ciudad</label>
                     <select
                       className="form-select"
@@ -1157,15 +1217,40 @@ export const ClientsPage = () => {
                       ))}
                     </select>
                   </div>
+                </div>
+
+                <div className="form-grid">
                   <div className="form-group">
                     <label className="form-label">Dirección (Referencial)</label>
                     <input
                       type="text"
                       className="form-input"
+                      placeholder="Domicilio o referencia"
                       value={formData.address}
                       onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     />
                   </div>
+                  <div className="form-group">
+                    <label className="form-label">Dirección de Entrega</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Lugar de descarga o despacho"
+                      value={formData.delivery_address}
+                      onChange={(e) => setFormData({ ...formData, delivery_address: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Correo Electrónico</label>
+                  <input
+                    type="email"
+                    className="form-input"
+                    placeholder="contacto@cliente.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  />
                 </div>
 
                 <div className="form-grid">

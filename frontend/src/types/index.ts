@@ -41,6 +41,9 @@ export interface Client {
   phone: string | null;
   email: string | null;
   address: string | null;
+  delivery_address?: string | null;
+  stall_number?: string | null;
+  client_code?: string | null;
   city: string | null;
   lat: number;
   lng: number;
